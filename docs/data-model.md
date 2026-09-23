@@ -1,10 +1,52 @@
 # Data model
 
-One table: `patients`. See [`app/models/patient.py`](../app/models/patient.py) for the
-SQLAlchemy model, [`migrations/versions/0001_create_patients.py`](../migrations/versions/0001_create_patients.py)
-for the migration, and [`docs/adr/0003-patient-schema.md`](adr/0003-patient-schema.md) for
-the reasoning behind soft delete, non-unique phone, the DOB/updated_at triggers, and
-defense-in-depth constraints.
+Four tables: `patients` (core), `call_logs` (transcripts and outcomes),
+`providers` and `appointments` (mock scheduling). Migrations 0001–0003. The reasoning is in
+ADR [0003](adr/0003-patient-schema.md) (patients), [0007](adr/0007-call-logs-and-transcripts.md)
+(call logs), and [0008](adr/0008-mock-appointment-scheduling.md) (scheduling).
+
+```mermaid
+erDiagram
+    patients ||--o{ call_logs : "has (patient_id, SET NULL)"
+    patients ||--o{ appointments : "books (patient_id, CASCADE)"
+    providers ||--o{ appointments : "sees (provider_id, RESTRICT)"
+
+    patients {
+        uuid patient_id PK
+        varchar first_name
+        varchar last_name
+        date date_of_birth
+        varchar phone_number
+        text source_call_id UK
+        timestamptz deleted_at
+    }
+    call_logs {
+        uuid call_log_id PK
+        text vapi_call_id UK
+        uuid patient_id FK
+        varchar outcome
+        text summary
+        text transcript
+        int duration_seconds
+    }
+    providers {
+        uuid provider_id PK
+        varchar full_name
+        varchar specialty
+        bool active
+    }
+    appointments {
+        uuid appointment_id PK
+        uuid patient_id FK
+        uuid provider_id FK
+        timestamptz start_time
+        int duration_minutes
+        varchar status
+        text source_call_id
+    }
+```
+
+## `patients`
 
 "Enforced by" lists every layer that rejects a bad value for that column:
 **App** = `app/validation/` (and, later, the Pydantic request schemas that call it);
@@ -50,3 +92,44 @@ defense-in-depth constraints.
 |---|---|---|
 | `patients_reject_future_dob` | `BEFORE INSERT OR UPDATE` | rejects `date_of_birth > CURRENT_DATE` (can't be a CHECK — see ADR 0003) |
 | `patients_set_updated_at` | `BEFORE UPDATE` | sets `updated_at = clock_timestamp()` |
+
+## `call_logs`
+
+| Column | Type | Nullable | Enforced by | Notes |
+|---|---|---|---|---|
+| `call_log_id` | `uuid` | no (PK) | DB | `gen_random_uuid()` |
+| `vapi_call_id` | `text` | no | DB (`UNIQUE`) | upsert key, since Vapi retries |
+| `patient_id` | `uuid` | yes | DB (FK, `ON DELETE SET NULL`) | set when a save succeeds in the call |
+| `outcome` | `varchar(20)` | no | DB CHECK | `registered`, `updated`, `abandoned`, `failed`, `in_progress` (default), `no_action` |
+| `started_at`, `ended_at` | `timestamptz` | yes | — | from end-of-call-report |
+| `duration_seconds` | `int` | yes | DB CHECK `>= 0` | computed from the timestamps |
+| `ended_reason`, `language`, `summary`, `transcript`, `recording_url` | `text` | yes | — | transcript/summary may contain PHI |
+| `created_at`, `updated_at` | `timestamptz` | no | DB (default, `set_updated_at` trigger) | |
+
+Indexes: `patient_id`, `created_at`.
+
+## `providers`
+
+| Column | Type | Notes |
+|---|---|---|
+| `provider_id` | `uuid` PK | seeded by migration 0003 with fixed IDs |
+| `full_name`, `specialty` | `varchar(100)` | |
+| `active` | `bool` | default `true`; only active providers get slots |
+
+## `appointments`
+
+| Column | Type | Nullable | Enforced by | Notes |
+|---|---|---|---|---|
+| `appointment_id` | `uuid` | no (PK) | DB | |
+| `patient_id` | `uuid` | no | DB (FK, `CASCADE`) | |
+| `provider_id` | `uuid` | no | DB (FK, `RESTRICT`) | |
+| `start_time` | `timestamptz` | no | App (signed slot_id) | always a generated 30-min slot |
+| `duration_minutes` | `int` | no | DB CHECK `> 0` | default 30 |
+| `reason` | `varchar(200)` | yes | App truncates, DB length | |
+| `status` | `varchar(20)` | no | DB CHECK | `booked` (default) or `cancelled` |
+| `source_call_id` | `text` | yes | — | per-call idempotency |
+| `created_at`, `updated_at` | `timestamptz` | no | DB (default, trigger) | |
+
+**Double-booking guard:** partial unique index `ux_appointments_provider_start_time_booked`
+on `(provider_id, start_time) WHERE status = 'booked'`. The database, not the app,
+guarantees one booking per slot under concurrency.

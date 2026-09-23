@@ -66,6 +66,16 @@ break the save rather than just the transcript. Keeping the tool contract
 language-invariant means Spanish support required zero changes to `app/voice/tools.py` —
 only the prompt.
 
+## Appointment offer (§3i)
+
+Offered **once, only after a successful save**. Registration is what the caller called
+for; if scheduling goes sideways, the registration is already safe. At most **two options
+at a time**, because three or more spoken times are hard to hold in your head on a phone
+call. Times are always said with "Eastern time", since callers may be in another zone.
+Slot IDs are opaque and signed, so the model can only book times the server offered. On
+`SLOT_TAKEN` the model apologizes lightly and offers the next option, not an error
+message. On `BOOK_FAILED` it reassures the caller that the registration itself is saved.
+
 ## Known failure modes and mitigations
 
 | Failure mode | Mitigation |
@@ -76,6 +86,8 @@ only the prompt.
 | Caller's spoken digits transcribed wrong (phone/ZIP) | `numerals: true` on the transcriber converts spoken digits to numerals before the model sees them; `validate_fields` catches what still slips through |
 | Model cuts off a caller mid-spelling or mid-number | `startSpeakingPlan.transcriptionEndpointingPlan.onNumberSeconds` is tuned higher than punctuation/no-punctuation cases (see ADR 0006) |
 | Model invents a field it never actually heard | Explicit guardrail: "never invent, assume, or guess" |
+| Model invents or edits a slot time | `slot_id` is HMAC-signed; `book_appointment` rejects anything the server didn't issue |
+| Model reads three-plus options in one breath | "At most two at a time" rule in §3i |
 
 ## How to iterate
 

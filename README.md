@@ -6,18 +6,32 @@ Neon Postgres.
 
 ## Overview
 
-Batch 1: FastAPI scaffold, config, logging, envelope, middleware, DB session, CI.
-Batch 2: data layer — validators, `patients` table, migrations, seed script.
-Batch 3+4: `/patients` REST API, service/repository layers, Vapi webhook with tool
-handlers. Batch 5 (this state): the voice agent itself — system prompt, assistant config
-as code, sync script. Still TBD: appointment scheduling, call transcripts/recordings
-surfaced anywhere, dashboard.
+Callers dial a US number and talk to **Sarah**, a voice agent that collects their
+demographics, validates each field as they go, reads everything back in short chunks,
+and saves it. After saving, she offers to book a first appointment. Staff see every
+patient, appointment and call, including transcripts, in a read-only dashboard.
+
+Core (spec §1–5): phone agent, patient data model, Postgres, REST API, voice ↔ DB
+integration. Bonus features: see [Bonus features](#bonus-features).
 
 ## Live links
 
-- Phone number: see Vapi dashboard (`VAPI_PHONE_NUMBER_ID` in `.env`)
-- API base URL: `$PUBLIC_BASE_URL` (ngrok tunnel in dev; see below)
-- Dashboard: TBD in later batch
+- Phone number: `+1 (732) 782-5438` (assigned by `make sync-vapi`)
+- API base URL: `$PUBLIC_BASE_URL` (ngrok tunnel in dev), docs at `/docs`
+- Dashboard: `$PUBLIC_BASE_URL/dashboard`. HTTP Basic, credentials from
+  `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` (shared with reviewers separately, never
+  committed)
+
+## Bonus features
+
+| Bonus (spec) | Where |
+|---|---|
+| Duplicate detection → offer update | `find_patient_by_phone` + DOB-verified `update_patient` (prompt §3c) |
+| Appointment scheduling (mock) | `get_available_slots` / `book_appointment`; DB-enforced no double booking — [ADR 0008](docs/adr/0008-mock-appointment-scheduling.md) |
+| Multi-language | Spanish switch mid-call (prompt "Language"; Deepgram nova-3 multi) |
+| Transcript / summary linked to patient | `call_logs` from `end-of-call-report` — [ADR 0007](docs/adr/0007-call-logs-and-transcripts.md) |
+| Dashboard | `/dashboard` — [ADR 0009](docs/adr/0009-server-rendered-dashboard.md) |
+| Automated API tests | `make check` (unit + integration against real Postgres) |
 
 ## Architecture
 
@@ -36,8 +50,9 @@ app/
   services/            # business logic: patient_service (used by REST AND voice)
   api/
     deps.py            # shared dependencies (db session, X-API-Key auth)
-    routers/           # health, patients, vapi (webhook); dashboard — TBD
+    routers/           # health, patients, providers, vapi (webhook), dashboard
   voice/               # Vapi payload parsing (schemas.py) + tool handlers (tools.py)
+  templates/, static/  # dashboard Jinja2 templates + one CSS file
 migrations/            # Alembic (0001_create_patients)
 vapi/                  # assistant.json, prompts/system_prompt.md, tools/*.json
 scripts/               # seed; sync_vapi (pushes vapi/ config to the Vapi API)
@@ -129,6 +144,27 @@ curl -s -X PUT "$API_BASE/patients/<patient_id>" -H "X-API-Key: $API_KEY" -H "Co
 curl -s -X DELETE "$API_BASE/patients/<patient_id>" -H "X-API-Key: $API_KEY"
 ```
 
+### Scheduling, call history, providers (read-only)
+
+```bash
+curl -s "$API_BASE/patients/<patient_id>/appointments" -H "X-API-Key: $API_KEY"
+curl -s "$API_BASE/patients/<patient_id>/calls" -H "X-API-Key: $API_KEY"   # includes transcripts
+curl -s "$API_BASE/providers" -H "X-API-Key: $API_KEY"
+```
+
+## Dashboard
+
+`/dashboard` (patients, stats, search by last name, phone or DOB), `/dashboard/patients/{id}`
+(full record, appointments, call history with transcripts), `/dashboard/calls`
+(all calls, with abandoned/failed ones marked as a follow-up queue). Server-rendered,
+no JavaScript. HTTP Basic auth, strict CSP, `no-store`, `noindex`.
+
+```bash
+curl -s -o /dev/null -w "%{http_code}
+" "$API_BASE/dashboard"                                  # 401
+curl -s -u "$DASHBOARD_USERNAME:$DASHBOARD_PASSWORD" "$API_BASE/dashboard" | head   # HTML
+```
+
 ## Vapi webhook
 
 `POST /vapi/webhook` — auth via `X-Vapi-Secret: $VAPI_WEBHOOK_SECRET` or
@@ -156,7 +192,8 @@ Config lives entirely as code under `vapi/`:
 - `vapi/assistant.json` — model/voice/transcriber/turn-taking/server config, with
   `$PUBLIC_BASE_URL` / `$VAPI_WEBHOOK_SECRET` placeholders and `$SYSTEM_PROMPT` /
   `$TOOL_IDS` sentinels resolved by the sync script.
-- `vapi/tools/*.json` — the 4 tool schemas from Batch 3+4, unchanged.
+- `vapi/tools/*.json` — 6 tool schemas (registration + scheduling), plus Vapi's built-in
+  `endCall`.
 
 Model/voice/transcriber choices and every Vapi field name are justified and
 doc-URL-cited in
@@ -203,18 +240,25 @@ automatically at the start of the test session and roll back (or truncate) betwe
 
 ## Known limitations / trade-offs
 
-- No appointment scheduling, dashboard UI, or surfaced call transcripts/recordings yet
-  (scoped to later batches) — the appointment offer has a disabled placeholder section
-  in the system prompt, ready for Batch 6.
-- No retention/purge job for soft-deleted rows yet.
-- Assistant-level silence-based auto-hangup and backchanneling aren't configured because
-  they don't exist in Vapi's current API (confirmed against the live OpenAPI spec, not
-  assumed) — silence handling is prompt-level only; see ADR 0006.
-- `source_call_id` idempotency covers retries within one call, not a caller hanging up
-  and calling back (see ADR 0005).
+- Scheduling is mock: Mon–Fri 9–5 ET, 30-min slots, no provider calendars, holidays, or
+  cancel/reschedule by voice. A booking is one appointment per call.
+- Dashboard is read-only with a single shared Basic-auth login: no per-user accounts,
+  logout, or lockout.
+- `call_logs.language` isn't populated, because Vapi's end-of-call report doesn't include
+  the detected language.
+- Soft-deleted patients have no retention/purge job.
+- `source_call_id` idempotency covers retries within one call, not a caller who hangs
+  up and calls back. `find_patient_by_phone` catches that case conversationally.
+- Assistant-level silence auto-hangup and backchanneling don't exist in Vapi's current
+  API (ADR 0006), so silence is handled in the prompt.
+- Automated conversation testing via Vapi's Chat API needs a card on the Vapi account,
+  which returns `402` on free credits. Conversation behavior is covered by the manual
+  [test-call script](docs/test-call-script.md).
 
 ## Next steps
 
-- Batch 6: end-of-call-report handling, call transcripts, appointment scheduling (mock
-  data) — fills in the placeholder in `vapi/prompts/system_prompt.md`.
-- Batch 7: dashboard.
+- Automated multi-turn conversation evals (Vapi Chat API once billing is enabled, or a
+  local OpenAI-driven harness against the same prompt and tools).
+- Cancel/reschedule tools; real provider schedules.
+- Per-user dashboard auth (SSO) and an audit log of who viewed which record.
+- Deploy behind a stable domain instead of an ngrok tunnel.

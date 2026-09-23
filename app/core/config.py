@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     PUBLIC_BASE_URL: str | None = None
     VAPI_PHONE_NUMBER_ID: str | None = None
 
+    # Mock appointment availability is computed in this timezone (business hours,
+    # spoken-back times). IANA name, resolved via zoneinfo.
+    CLINIC_TIMEZONE: str = "America/New_York"
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def _split_cors_origins(cls, value: object) -> object:

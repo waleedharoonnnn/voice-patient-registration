@@ -1,0 +1,19 @@
+{
+  "name": "get_available_slots",
+  "description": "Find open appointment times. Only call this after the patient has been saved (SAVED/ALREADY_SAVED/UPDATED) and has said they'd like to book a first appointment. Returns up to 3 options; offer the caller at most 2 at a time. Times are Eastern.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "preferred_date": {
+        "type": "string",
+        "description": "Optional specific date the caller asked for, as MM/DD/YYYY. Omit if they have no specific day in mind."
+      },
+      "time_of_day": {
+        "type": "string",
+        "enum": ["morning", "afternoon", "any"],
+        "description": "Caller's preferred part of the day. Use 'any' if they have no preference."
+      }
+    },
+    "required": []
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "book_appointment",
+  "description": "Book one of the slots returned by get_available_slots, after the caller has picked it. Pass the slot_id exactly as it was returned — never invent or modify one.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "patient_id": {
+        "type": "string",
+        "description": "The patient_id from the SAVED, ALREADY_SAVED, or UPDATED result earlier in this call."
+      },
+      "slot_id": {
+        "type": "string",
+        "description": "The opaque slot_id of the option the caller chose, copied exactly from get_available_slots."
+      },
+      "reason": {
+        "type": "string",
+        "description": "Optional short reason for the visit in the caller's words, e.g. 'annual checkup'. Max 200 characters."
+      }
+    },
+    "required": ["patient_id", "slot_id"]
+  }
+}

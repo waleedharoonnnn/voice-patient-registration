@@ -1,4 +1,4 @@
-"""Validation and parsing for date of birth."""
+"""Validation and parsing for dates: date of birth and general calendar dates."""
 
 from __future__ import annotations
 
@@ -9,6 +9,19 @@ MIN_DATE_OF_BIRTH = date(1900, 1, 1)
 _FORMATS = ("%m/%d/%Y", "%Y-%m-%d")
 
 
+def parse_calendar_date(value: str, *, field_name: str = "Date") -> date:
+    """Parse 'MM/DD/YYYY' or 'YYYY-MM-DD', rejecting impossible dates (e.g. 02/30).
+
+    No range checks (past/future) — see `parse_dob` for date-of-birth-specific rules.
+    """
+    for fmt in _FORMATS:
+        try:
+            return datetime.strptime(value.strip(), fmt).date()
+        except ValueError:
+            continue
+    raise ValueError(f"{field_name} must be in MM/DD/YYYY or YYYY-MM-DD format.")
+
+
 def parse_dob(value: str, *, today: date | None = None) -> date:
     """Parse a date of birth from 'MM/DD/YYYY' or 'YYYY-MM-DD'.
 
@@ -17,17 +30,7 @@ def parse_dob(value: str, *, today: date | None = None) -> date:
     """
     current = today if today is not None else date.today()
 
-    parsed: date | None = None
-    for fmt in _FORMATS:
-        try:
-            parsed = datetime.strptime(value.strip(), fmt).date()
-        except ValueError:
-            continue
-        else:
-            break
-
-    if parsed is None:
-        raise ValueError("Date of birth must be in MM/DD/YYYY or YYYY-MM-DD format.")
+    parsed = parse_calendar_date(value, field_name="Date of birth")
 
     if parsed > current:
         raise ValueError("Date of birth cannot be in the future.")

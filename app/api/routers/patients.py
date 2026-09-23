@@ -7,7 +7,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 
-from app.api.deps import get_patient_service, require_api_key
+from app.api.deps import (
+    get_appointment_service,
+    get_call_log_service,
+    get_patient_service,
+    require_api_key,
+)
 from app.core.errors import NotFoundError, ValidationFailedError
 from app.schemas.common import Envelope
 from app.schemas.patient import (
@@ -17,6 +22,9 @@ from app.schemas.patient import (
     PatientOut,
     PatientUpdate,
 )
+from app.schemas.scheduling import AppointmentOut, CallLogOut
+from app.services.appointment_service import AppointmentService
+from app.services.call_log_service import CallLogService
 from app.services.patient_service import PatientService
 from app.validation.dates import parse_dob
 
@@ -107,3 +115,25 @@ async def delete_patient(
 ) -> Envelope[PatientOut]:
     patient = await service.delete_patient(_parse_patient_id(patient_id))
     return Envelope(data=PatientOut.model_validate(patient))
+
+
+@router.get("/{patient_id}/appointments", summary="List a patient's appointments")
+async def list_patient_appointments(
+    patient_id: str,
+    patients: Annotated[PatientService, Depends(get_patient_service)],
+    appointments: Annotated[AppointmentService, Depends(get_appointment_service)],
+) -> Envelope[list[AppointmentOut]]:
+    patient = await patients.get_patient(_parse_patient_id(patient_id))
+    rows = await appointments.list_for_patient(patient.patient_id)
+    return Envelope(data=[AppointmentOut.model_validate(a) for a in rows])
+
+
+@router.get("/{patient_id}/calls", summary="List a patient's call history")
+async def list_patient_calls(
+    patient_id: str,
+    patients: Annotated[PatientService, Depends(get_patient_service)],
+    calls: Annotated[CallLogService, Depends(get_call_log_service)],
+) -> Envelope[list[CallLogOut]]:
+    patient = await patients.get_patient(_parse_patient_id(patient_id))
+    rows = await calls.list_for_patient(patient.patient_id)
+    return Envelope(data=[CallLogOut.model_validate(c) for c in rows])

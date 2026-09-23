@@ -1,0 +1,12 @@
+{
+  "message": {
+    "type": "tool-calls",
+    "call": { "id": "call-unknown-1" },
+    "toolCallList": [
+      {
+        "id": "tc-1",
+        "function": { "name": "delete_universe", "arguments": {} }
+      }
+    ]
+  }
+}

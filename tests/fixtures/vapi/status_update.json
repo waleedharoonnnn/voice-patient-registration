@@ -1,0 +1,7 @@
+{
+  "message": {
+    "type": "status-update",
+    "call": { "id": "call-status-1" },
+    "status": "in-progress"
+  }
+}

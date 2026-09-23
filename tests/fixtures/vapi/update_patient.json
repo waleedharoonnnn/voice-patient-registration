@@ -1,0 +1,19 @@
+{
+  "message": {
+    "type": "tool-calls",
+    "call": { "id": "call-update-1" },
+    "toolCallList": [
+      {
+        "id": "tc-1",
+        "function": {
+          "name": "update_patient",
+          "arguments": {
+            "patient_id": "REPLACE_ME",
+            "date_of_birth": "01/01/1990",
+            "fields": { "city": "NewCity" }
+          }
+        }
+      }
+    ]
+  }
+}

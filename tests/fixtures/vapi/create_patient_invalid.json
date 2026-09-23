@@ -1,0 +1,25 @@
+{
+  "message": {
+    "type": "tool-calls",
+    "call": { "id": "call-create-invalid-1" },
+    "toolCallList": [
+      {
+        "id": "tc-1",
+        "function": {
+          "name": "create_patient",
+          "arguments": {
+            "first_name": "Voice",
+            "last_name": "Caller",
+            "date_of_birth": "01/01/2099",
+            "sex": "Other",
+            "phone_number": "2125550188",
+            "address_line_1": "1 Voice St",
+            "city": "Testburg",
+            "state": "IL",
+            "zip_code": "62704"
+          }
+        }
+      }
+    ]
+  }
+}

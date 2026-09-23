@@ -1,0 +1,15 @@
+{
+  "message": {
+    "type": "tool-calls",
+    "call": { "id": "call-find-invalid-1" },
+    "toolCallList": [
+      {
+        "id": "tc-1",
+        "function": {
+          "name": "find_patient_by_phone",
+          "arguments": { "phone_number": "123" }
+        }
+      }
+    ]
+  }
+}

@@ -176,3 +176,15 @@ Rules:
   and report results honestly. Do not claim success on failing checks.
 - Do not modify files outside the task's scope. Do not weaken tests to make them pass.
 - End with a short summary: what changed, how to verify, anything left open.
+
+## 14. Batch reports
+
+At the end of every batch, run ALL verification yourself (do not ask the user to run commands
+you can run), then write `docs/progress/batch-NN.md` and print it in full, in this format:
+- Batch / scope
+- Files created / changed
+- Decisions made (and why) + any deviation from CLAUDE.md
+- Verification: each command run, and its real result (pass/fail, counts)
+- Manual checks the user must do (only things you cannot do yourself, e.g. UI in a browser)
+- Open issues / risks
+- Suggested commit message(s)

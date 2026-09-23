@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: voiceai
+          POSTGRES_PASSWORD: voiceai
+          POSTGRES_DB: voiceai_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U voiceai -d voiceai_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+asyncpg://voiceai:voiceai@localhost:5432/voiceai_test
+      DATABASE_URL_DIRECT: postgresql+asyncpg://voiceai:voiceai@localhost:5432/voiceai_test
+      API_KEY: ci-api-key
+      VAPI_WEBHOOK_SECRET: ci-webhook-secret
+      DASHBOARD_USERNAME: ci-dashboard-user
+      DASHBOARD_PASSWORD: ci-dashboard-password
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint (ruff check)
+        run: uv run ruff check .
+
+      - name: Format check (ruff format)
+        run: uv run ruff format --check .
+
+      - name: Type check (mypy)
+        run: uv run mypy app
+
+      - name: Test (pytest)
+        run: uv run pytest

@@ -16,6 +16,7 @@ _REQUIRED_ENV: dict[str, str] = {
     "DATABASE_URL": "postgresql+asyncpg://voiceai:voiceai@localhost:5544/voiceai_test",
     "DATABASE_URL_DIRECT": "postgresql+asyncpg://voiceai:voiceai@localhost:5544/voiceai_test",
     "TEST_DATABASE_URL": "postgresql+asyncpg://voiceai:voiceai@localhost:5544/voiceai_test",
+    "DB_SSL_REQUIRE": "false",
     "API_KEY": "test-api-key",
     "VAPI_WEBHOOK_SECRET": "test-webhook-secret",
     "DASHBOARD_USERNAME": "test-dashboard-user",
@@ -30,14 +31,22 @@ def _env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(key, value)
 
 
-@pytest.fixture
-def app(_env: None) -> FastAPI:
+@pytest_asyncio.fixture
+async def app(_env: None) -> AsyncGenerator[FastAPI]:
     # Import (and therefore Settings()) happens after env vars are set by the _env fixture.
     from app.core.config import get_settings
+    from app.db.session import dispose_engine, get_engine, get_session_factory
     from app.main import create_app
 
     get_settings.cache_clear()
-    return create_app()
+    application = create_app()
+    yield application
+    # The DB engine is cached process-wide (by design, for production), but each pytest
+    # test gets its own event loop — a pooled connection opened under one test's loop is
+    # unusable in the next. Dispose and clear so the next test builds a fresh one.
+    await dispose_engine()
+    get_engine.cache_clear()
+    get_session_factory.cache_clear()
 
 
 @pytest_asyncio.fixture

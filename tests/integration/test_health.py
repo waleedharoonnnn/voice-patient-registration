@@ -15,14 +15,14 @@ async def test_health_liveness_ok(client: AsyncClient) -> None:
     assert body["error"] is None
 
 
-async def test_health_ready_reports_503_when_db_unreachable(client: AsyncClient) -> None:
-    # No real Postgres is running against the configured DATABASE_URL in this test env,
-    # so the readiness probe must report the DB as unreachable rather than hang or 500.
+async def test_health_ready_reports_ok_when_db_reachable(client: AsyncClient) -> None:
+    # Since Batch 2, integration tests run against the real local Docker Postgres, so the
+    # readiness probe should report success rather than the DB being unreachable.
     response = await client.get("/health/ready")
-    assert response.status_code == 503
+    assert response.status_code == 200
     body = response.json()
-    assert body["data"] is None
-    assert body["error"]["code"] == "not_ready"
+    assert body["data"] == {"status": "ready"}
+    assert body["error"] is None
 
 
 async def test_unknown_route_returns_enveloped_404(client: AsyncClient) -> None:

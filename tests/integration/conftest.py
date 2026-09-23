@@ -11,6 +11,7 @@ import pytest
 import pytest_asyncio
 from alembic import command
 from alembic.config import Config
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from app.core.config import get_settings
@@ -61,3 +62,17 @@ async def db_conn(
                 await trans.rollback()
     finally:
         await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def clean_patients_table(
+    test_database_url: str, _migrated_schema: None
+) -> AsyncGenerator[None]:
+    """For tests that go through the real HTTP app (which commits per request, so the
+    rollback-based `db_conn` isolation doesn't apply): start each test with an empty table.
+    """
+    engine = create_async_engine(test_database_url)
+    async with engine.begin() as conn:
+        await conn.execute(text("TRUNCATE TABLE patients"))
+    await engine.dispose()
+    yield

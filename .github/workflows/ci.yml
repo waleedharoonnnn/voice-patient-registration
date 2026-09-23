@@ -29,6 +29,7 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://voiceai:voiceai@localhost:5544/voiceai_test
       DATABASE_URL_DIRECT: postgresql+asyncpg://voiceai:voiceai@localhost:5544/voiceai_test
       TEST_DATABASE_URL: postgresql+asyncpg://voiceai:voiceai@localhost:5544/voiceai_test
+      DB_SSL_REQUIRE: "false"
       API_KEY: ci-api-key
       VAPI_WEBHOOK_SECRET: ci-webhook-secret
       DASHBOARD_USERNAME: ci-dashboard-user

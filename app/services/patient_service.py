@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from app.core.config import get_settings
 from app.core.errors import NotFoundError
@@ -97,6 +97,9 @@ class PatientService:
             limit=limit,
             offset=offset,
         )
+
+    async def count_active(self, *, created_since: datetime | None = None) -> int:
+        return await self._repository.count_active(created_since=created_since)
 
     async def find_by_phone(self, phone_number: str) -> list[Patient]:
         """Active (non-soft-deleted) matches only."""

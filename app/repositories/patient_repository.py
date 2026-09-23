@@ -63,6 +63,13 @@ class PatientRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all()), total
 
+    async def count_active(self, *, created_since: datetime | None = None) -> int:
+        conditions: list[ColumnElement[bool]] = [Patient.deleted_at.is_(None)]
+        if created_since is not None:
+            conditions.append(Patient.created_at >= created_since)
+        stmt = select(func.count()).select_from(Patient).where(*conditions)
+        return (await self._session.execute(stmt)).scalar_one()
+
     async def find_active_by_phone(self, phone_number: str) -> list[Patient]:
         stmt = (
             select(Patient)
@@ -80,8 +87,13 @@ class PatientRepository:
 
     async def create(self, fields: dict[str, object]) -> Patient:
         patient = Patient(**fields)
-        self._session.add(patient)
-        await self._flush(patient)
+        try:
+            async with self._session.begin_nested():
+                self._session.add(patient)
+                await self._session.flush()
+        except IntegrityError as exc:
+            raise _translate_integrity_error(exc) from exc
+        await self._session.refresh(patient)
         return patient
 
     async def update(self, patient: Patient, fields: dict[str, object]) -> Patient:
@@ -96,8 +108,11 @@ class PatientRepository:
         return patient
 
     async def _flush(self, patient: Patient) -> None:
+        """Flush pending changes inside a savepoint, so a constraint violation rolls back
+        only this write and the request's transaction stays usable."""
         try:
-            await self._session.flush()
+            async with self._session.begin_nested():
+                await self._session.flush()
         except IntegrityError as exc:
             raise _translate_integrity_error(exc) from exc
         await self._session.refresh(patient)

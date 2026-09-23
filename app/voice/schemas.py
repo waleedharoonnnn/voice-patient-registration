@@ -46,12 +46,35 @@ class VapiToolCall(BaseModel):
     function: VapiToolFunction
 
 
+class VapiArtifact(BaseModel):
+    """Subset of Vapi's Artifact object relevant to end-of-call-report."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    transcript: str | None = None
+    recordingUrl: str | None = None
+
+
+class VapiAnalysis(BaseModel):
+    """Subset of Vapi's Analysis object relevant to end-of-call-report."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    summary: str | None = None
+
+
 class VapiMessage(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     type: str
     call: VapiCall | None = None
     toolCallList: list[VapiToolCall] = Field(default_factory=list)
+    # end-of-call-report fields (all optional: absent for other message types).
+    endedReason: str | None = None
+    startedAt: str | None = None
+    endedAt: str | None = None
+    artifact: VapiArtifact | None = None
+    analysis: VapiAnalysis | None = None
 
 
 class VapiWebhookPayload(BaseModel):

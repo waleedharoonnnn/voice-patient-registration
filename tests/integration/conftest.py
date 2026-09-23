@@ -69,10 +69,11 @@ async def clean_patients_table(
     test_database_url: str, _migrated_schema: None
 ) -> AsyncGenerator[None]:
     """For tests that go through the real HTTP app (which commits per request, so the
-    rollback-based `db_conn` isolation doesn't apply): start each test with an empty table.
+    rollback-based `db_conn` isolation doesn't apply): start each test with empty
+    patient-related tables (providers are reference data seeded by migration 0003, kept).
     """
     engine = create_async_engine(test_database_url)
     async with engine.begin() as conn:
-        await conn.execute(text("TRUNCATE TABLE patients"))
+        await conn.execute(text("TRUNCATE TABLE appointments, call_logs, patients"))
     await engine.dispose()
     yield

@@ -234,7 +234,7 @@ async def test_tool_handler_db_failure_returns_save_failed_with_200(
 async def test_tool_handler_timeout_returns_friendly_result(
     client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async def _slow_handler(arguments: dict[str, Any], *, call_id: str, service: object) -> str:
+    async def _slow_handler(arguments: dict[str, Any], ctx: object) -> str:
         await asyncio.sleep(10)
         return "NO_MATCH"
 

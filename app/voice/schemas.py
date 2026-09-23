@@ -1,0 +1,60 @@
+"""Pydantic models for Vapi server-message webhook payloads.
+
+Tolerant of extra fields (`extra="ignore"`): Vapi's payloads carry many fields we don't
+use, and a new one appearing must never break the webhook.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class VapiCall(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+
+
+class VapiToolFunction(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    name: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("arguments", mode="before")
+    @classmethod
+    def _parse_arguments(cls, v: object) -> object:
+        """Vapi sends arguments as a JSON object OR a JSON-encoded string — accept both."""
+        if isinstance(v, str):
+            if not v.strip():
+                return {}
+            try:
+                parsed = json.loads(v)
+            except json.JSONDecodeError:
+                return {}
+            return parsed if isinstance(parsed, dict) else {}
+        return v
+
+
+class VapiToolCall(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    function: VapiToolFunction
+
+
+class VapiMessage(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    type: str
+    call: VapiCall | None = None
+    toolCallList: list[VapiToolCall] = Field(default_factory=list)
+
+
+class VapiWebhookPayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    message: VapiMessage

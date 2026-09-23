@@ -1,0 +1,14 @@
+{
+  "name": "find_patient_by_phone",
+  "description": "Look up existing patients by phone number, e.g. right after collecting the phone number, to check for a duplicate registration before creating a new record.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "phone_number": {
+        "type": "string",
+        "description": "10-digit US phone number, digits only or common spoken format."
+      }
+    },
+    "required": ["phone_number"]
+  }
+}

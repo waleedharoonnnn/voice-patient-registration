@@ -1,0 +1,66 @@
+{
+  "name": "create_patient",
+  "description": "Save a new patient record after the caller has confirmed all collected information is correct. Only call this after read-back and explicit confirmation. Required fields must all be present; optional fields may be omitted if the caller declined to provide them.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "first_name": { "type": "string", "description": "Patient's first name." },
+      "last_name": { "type": "string", "description": "Patient's last name." },
+      "date_of_birth": {
+        "type": "string",
+        "description": "Date of birth as MM/DD/YYYY."
+      },
+      "sex": {
+        "type": "string",
+        "enum": ["Male", "Female", "Other", "Decline to Answer"]
+      },
+      "phone_number": {
+        "type": "string",
+        "description": "10-digit US phone number, digits only or common spoken format."
+      },
+      "email": { "type": "string", "description": "Optional email address." },
+      "address_line_1": { "type": "string", "description": "Street address." },
+      "address_line_2": {
+        "type": "string",
+        "description": "Optional apartment/suite/unit."
+      },
+      "city": { "type": "string" },
+      "state": {
+        "type": "string",
+        "description": "Two-letter US state abbreviation, or the full state name."
+      },
+      "zip_code": { "type": "string", "description": "5-digit ZIP or ZIP+4." },
+      "insurance_provider": {
+        "type": "string",
+        "description": "Optional insurance company name."
+      },
+      "insurance_member_id": {
+        "type": "string",
+        "description": "Optional alphanumeric insurance member ID."
+      },
+      "preferred_language": {
+        "type": "string",
+        "description": "Optional. Defaults to English if not provided."
+      },
+      "emergency_contact_name": {
+        "type": "string",
+        "description": "Optional emergency contact full name."
+      },
+      "emergency_contact_phone": {
+        "type": "string",
+        "description": "Optional emergency contact 10-digit US phone number."
+      }
+    },
+    "required": [
+      "first_name",
+      "last_name",
+      "date_of_birth",
+      "sex",
+      "phone_number",
+      "address_line_1",
+      "city",
+      "state",
+      "zip_code"
+    ]
+  }
+}

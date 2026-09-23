@@ -41,6 +41,9 @@ class Settings(BaseSettings):
 
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10
+    # Neon always requires SSL. The local Docker Postgres used by integration tests does
+    # not support it, so this is off in the test env only (see .env.example).
+    DB_SSL_REQUIRE: bool = True
 
     API_KEY: SecretStr
     VAPI_WEBHOOK_SECRET: SecretStr
@@ -51,6 +54,16 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: Annotated[list[str], NoDecode] = Field(default_factory=list)
     RATE_LIMIT_DEFAULT: str = "60/minute"
+
+    # Voice tool handlers must never hang a live call; each is wrapped in a timeout.
+    VAPI_TOOL_TIMEOUT_SECONDS: float = 8.0
+    # DB sessions used to serve the Vapi webhook get a tighter statement_timeout than the
+    # rest of the app, so a slow query can't hang a live call either.
+    VAPI_WEBHOOK_DB_STATEMENT_TIMEOUT_MS: int = 5000
+
+    # Only needed to run `scripts/sync_vapi.py`, not to serve traffic.
+    PUBLIC_BASE_URL: str | None = None
+    VAPI_PHONE_NUMBER_ID: str | None = None
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod

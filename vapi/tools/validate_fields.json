@@ -1,0 +1,35 @@
+{
+  "name": "validate_fields",
+  "description": "Validate one or more patient fields the caller just gave, without saving anything. Use this mid-conversation to catch problems (e.g. a malformed phone number or an impossible date of birth) so you can re-prompt for exactly that field.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "fields": {
+        "type": "object",
+        "description": "Any subset of patient fields to validate.",
+        "properties": {
+          "first_name": { "type": "string" },
+          "last_name": { "type": "string" },
+          "date_of_birth": { "type": "string" },
+          "sex": {
+            "type": "string",
+            "enum": ["Male", "Female", "Other", "Decline to Answer"]
+          },
+          "phone_number": { "type": "string" },
+          "email": { "type": "string" },
+          "address_line_1": { "type": "string" },
+          "address_line_2": { "type": "string" },
+          "city": { "type": "string" },
+          "state": { "type": "string" },
+          "zip_code": { "type": "string" },
+          "insurance_provider": { "type": "string" },
+          "insurance_member_id": { "type": "string" },
+          "preferred_language": { "type": "string" },
+          "emergency_contact_name": { "type": "string" },
+          "emergency_contact_phone": { "type": "string" }
+        }
+      }
+    },
+    "required": ["fields"]
+  }
+}

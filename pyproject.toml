@@ -14,6 +14,7 @@ dependencies = [
     "alembic>=1.14",
     "slowapi>=0.1.9",
     "httpx>=0.27",
+    "email-validator>=2.2",
 ]
 
 [dependency-groups]

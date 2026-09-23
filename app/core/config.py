@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     # Neon direct (non-pooled) endpoint — used by Alembic migrations only.
     DATABASE_URL_DIRECT: str
+    # Local Docker Compose Postgres, used only by integration tests. Not required outside
+    # of running `pytest tests/integration`.
+    TEST_DATABASE_URL: str | None = None
 
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10

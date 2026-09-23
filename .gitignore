@@ -39,3 +39,6 @@ Thumbs.db
 
 # Docker
 postgres-data/
+
+# Vapi sync state (IDs only, but no reason to track a machine-generated file)
+vapi/.sync-state.json

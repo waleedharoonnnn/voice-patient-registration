@@ -1,4 +1,4 @@
-.PHONY: install run lint format typecheck test check migrate migration seed db-up db-down
+.PHONY: install run lint format typecheck test check migrate migration seed db-up db-down sync-vapi sync-vapi-dry-run
 
 install:
 	uv sync
@@ -38,3 +38,9 @@ db-up:
 
 db-down:
 	docker compose down
+
+sync-vapi:
+	uv run python -m scripts.sync_vapi
+
+sync-vapi-dry-run:
+	uv run python -m scripts.sync_vapi --dry-run

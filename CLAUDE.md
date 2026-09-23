@@ -16,6 +16,8 @@ Voice AI patient-registration agent (CareCloud take-home assessment).
 The assessment document is the source of truth for requirements. When in doubt, re-read
 it; do not invent requirements, and do not silently drop any.
 
+Requirements source of truth: `docs/assessment-spec.md`. Read it before every batch.
+
 ## 2. Tech stack (fixed — do not substitute)
 
 | Concern | Choice |

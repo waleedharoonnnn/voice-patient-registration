@@ -5,13 +5,16 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from app.api.routers import health, patients, vapi
+from app.api.routers import health, patients, providers, vapi
+from app.api.routers.dashboard import register_dashboard
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
@@ -20,6 +23,8 @@ from app.core.rate_limit import limiter, rate_limit_exceeded_handler
 from app.db.session import dispose_engine
 
 logger = logging.getLogger(__name__)
+
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 @asynccontextmanager
@@ -62,6 +67,9 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(patients.router)
     app.include_router(vapi.router)
+    app.include_router(providers.router)
+    register_dashboard(app)
+    app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
     return app
 

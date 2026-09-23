@@ -1,0 +1,100 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Patients{% endblock %}
+{% block content %}
+<h1>Patients</h1>
+
+<section aria-label="Summary" class="stats">
+  <div class="stat">
+    <span class="stat-value">{{ stats.total_patients }}</span>
+    <span class="stat-label">Active patients</span>
+  </div>
+  <div class="stat">
+    <span class="stat-value">{{ stats.registered_today }}</span>
+    <span class="stat-label">Registered today</span>
+  </div>
+  <div class="stat">
+    <span class="stat-value">{{ stats.calls_today }}</span>
+    <span class="stat-label">Calls today</span>
+  </div>
+  <div class="stat">
+    <span class="stat-value">{{ stats.upcoming_appointments }}</span>
+    <span class="stat-label">Upcoming appointments</span>
+  </div>
+</section>
+
+<form class="search" method="get" action="/dashboard" role="search" aria-label="Search patients">
+  <div class="field">
+    <label for="last_name">Last name</label>
+    <input id="last_name" name="last_name" type="text" value="{{ search.last_name }}" autocomplete="off" placeholder="e.g. Doe">
+  </div>
+  <div class="field">
+    <label for="phone">Phone</label>
+    <input id="phone" name="phone" type="tel" value="{{ search.phone }}" autocomplete="off" placeholder="(212) 555-0100">
+  </div>
+  <div class="field">
+    <label for="dob">Date of birth</label>
+    <input id="dob" name="dob" type="text" value="{{ search.dob }}" autocomplete="off" placeholder="MM/DD/YYYY">
+  </div>
+  <div class="search-actions">
+    <button type="submit" class="button">Search</button>
+    {% if searching %}<a class="button button-secondary" href="/dashboard">Clear</a>{% endif %}
+  </div>
+</form>
+
+{% if errors %}
+<div class="notice notice-error" role="alert">
+  <strong>Check your search:</strong>
+  <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+{% if patients %}
+<div class="table-wrap">
+  <table>
+    <caption>
+      {% if searching %}{{ total }} matching patient{{ "" if total == 1 else "s" }}{% else %}All active patients ({{ total }}){% endif %}
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">Name</th>
+        <th scope="col">Date of birth</th>
+        <th scope="col">Phone</th>
+        <th scope="col">Location</th>
+        <th scope="col">Registered</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in patients %}
+      <tr>
+        <td><a href="/dashboard/patients/{{ p.patient_id }}">{{ p.last_name }}, {{ p.first_name }}</a></td>
+        <td>{{ p.date_of_birth | d }}</td>
+        <td class="nowrap">{{ p.phone_number | phone }}</td>
+        <td>{{ p.city }}, {{ p.state }}</td>
+        <td class="nowrap">{{ p.created_at | dt }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if pages > 1 %}
+{% set base = {"last_name": search.last_name, "phone": search.phone, "dob": search.dob} %}
+<nav class="pagination" aria-label="Pagination">
+  {% if page > 1 %}<a class="button button-secondary" href="/dashboard?{{ dict(base, page=page - 1) | urlencode }}" rel="prev">← Previous</a>{% endif %}
+  <span>Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="button button-secondary" href="/dashboard?{{ dict(base, page=page + 1) | urlencode }}" rel="next">Next →</a>{% endif %}
+</nav>
+{% endif %}
+
+{% elif not errors %}
+<div class="empty">
+  {% if searching %}
+    <p class="empty-title">No patients match that search.</p>
+    <p>Last name matches exactly (any capitalization). Try fewer fields, or <a href="/dashboard">clear the search</a>.</p>
+  {% else %}
+    <p class="empty-title">No patients yet.</p>
+    <p>Patients registered by phone or through the API will show up here.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

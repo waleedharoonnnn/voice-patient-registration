@@ -1,0 +1,63 @@
+{% extends "dashboard/base.html" %}
+{% from "dashboard/_macros.html" import outcome_badge %}
+{% block title %}Calls{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <h1>Calls</h1>
+  <p class="muted">Abandoned and failed calls never produced a saved record. Use the summary and transcript to follow up.</p>
+</div>
+
+<nav class="filters" aria-label="Filter by outcome">
+  <a class="chip" href="/dashboard/calls" {% if not selected %}aria-current="page"{% endif %}>All</a>
+  {% for o in ["abandoned", "failed", "registered", "updated", "in_progress", "no_action"] %}
+  <a class="chip" href="/dashboard/calls?outcome={{ o }}" {% if selected == o %}aria-current="page"{% endif %}>{{ outcome_badge(o) }}</a>
+  {% endfor %}
+</nav>
+
+{% if calls %}
+<ol class="call-list">
+  {% for c in calls %}
+  <li class="call {% if c.outcome in ('abandoned', 'failed') %}call-followup{% endif %}">
+    <div class="call-head">
+      {{ outcome_badge(c.outcome) }}
+      {% if c.patient_id %}
+        <a class="call-patient" href="/dashboard/patients/{{ c.patient_id }}">{{ names.get(c.patient_id, "Patient") }}</a>
+      {% else %}
+        <span class="call-patient muted">No patient record</span>
+      {% endif %}
+      <span class="call-meta">{{ (c.started_at or c.created_at) | dt }} · {{ c.duration_seconds | duration }}</span>
+      {% if c.outcome in ('abandoned', 'failed') %}<span class="followup-tag">Needs follow-up</span>{% endif %}
+    </div>
+    {% if c.summary %}<p class="call-summary">{{ c.summary }}</p>{% endif %}
+    {% if c.ended_reason %}<p class="call-meta muted">Ended: {{ c.ended_reason }}</p>{% endif %}
+    {% if c.transcript %}
+    <details>
+      <summary>Show transcript</summary>
+      <pre class="transcript">{{ c.transcript }}</pre>
+    </details>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ol>
+
+{% if pages > 1 %}
+<nav class="pagination" aria-label="Pagination">
+  {% set base = {"outcome": selected} if selected else {} %}
+  {% if page > 1 %}<a class="button button-secondary" href="/dashboard/calls?{{ dict(base, page=page - 1) | urlencode }}" rel="prev">← Previous</a>{% endif %}
+  <span>Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="button button-secondary" href="/dashboard/calls?{{ dict(base, page=page + 1) | urlencode }}" rel="next">Next →</a>{% endif %}
+</nav>
+{% endif %}
+
+{% else %}
+<div class="empty">
+  {% if selected %}
+    <p class="empty-title">No calls with that outcome.</p>
+    <p><a href="/dashboard/calls">Show all calls</a></p>
+  {% else %}
+    <p class="empty-title">No calls yet.</p>
+    <p>Calls to the voice agent will appear here after they end.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

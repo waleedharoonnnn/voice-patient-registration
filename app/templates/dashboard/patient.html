@@ -1,0 +1,124 @@
+{% extends "dashboard/base.html" %}
+{% from "dashboard/_macros.html" import outcome_badge, field %}
+{% block title %}{{ patient.first_name }} {{ patient.last_name }}{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="/dashboard">← All patients</a></p>
+
+<div class="page-heading">
+  <h1>{{ patient.first_name }} {{ patient.last_name }}</h1>
+  <p class="muted">Registered {{ patient.created_at | dt }} · Last updated {{ patient.updated_at | dt }}</p>
+</div>
+
+<div class="cards">
+  <section class="card" aria-labelledby="h-identity">
+    <h2 id="h-identity">Identity</h2>
+    <dl>
+      {{ field("First name", patient.first_name) }}
+      {{ field("Last name", patient.last_name) }}
+      {{ field("Date of birth", patient.date_of_birth | d) }}
+      {{ field("Sex", patient.sex) }}
+      {{ field("Preferred language", patient.preferred_language) }}
+    </dl>
+  </section>
+
+  <section class="card" aria-labelledby="h-contact">
+    <h2 id="h-contact">Contact</h2>
+    <dl>
+      {{ field("Phone", patient.phone_number | phone) }}
+      {{ field("Email", patient.email) }}
+    </dl>
+  </section>
+
+  <section class="card" aria-labelledby="h-address">
+    <h2 id="h-address">Address</h2>
+    <dl>
+      {{ field("Street", patient.address_line_1) }}
+      {{ field("Apt / Suite", patient.address_line_2) }}
+      {{ field("City", patient.city) }}
+      {{ field("State", patient.state) }}
+      {{ field("ZIP code", patient.zip_code) }}
+    </dl>
+  </section>
+
+  <section class="card" aria-labelledby="h-insurance">
+    <h2 id="h-insurance">Insurance</h2>
+    <dl>
+      {{ field("Provider", patient.insurance_provider) }}
+      {{ field("Member ID", patient.insurance_member_id) }}
+    </dl>
+  </section>
+
+  <section class="card" aria-labelledby="h-emergency">
+    <h2 id="h-emergency">Emergency contact</h2>
+    <dl>
+      {{ field("Name", patient.emergency_contact_name) }}
+      {{ field("Phone", patient.emergency_contact_phone | phone if patient.emergency_contact_phone else None) }}
+    </dl>
+  </section>
+</div>
+
+<section class="section" aria-labelledby="h-appointments">
+  <h2 id="h-appointments">Appointments</h2>
+  {% if appointments %}
+  <div class="table-wrap">
+    <table>
+      <caption class="visually-hidden">Appointments for {{ patient.first_name }} {{ patient.last_name }}</caption>
+      <thead>
+        <tr>
+          <th scope="col">When</th>
+          <th scope="col">Provider</th>
+          <th scope="col">Reason</th>
+          <th scope="col">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in appointments %}
+        <tr>
+          <td class="nowrap">{{ a.start_time | dt }}</td>
+          <td>{{ providers.get(a.provider_id, "Unknown provider") }}</td>
+          <td>{{ a.reason or "—" }}</td>
+          <td>
+            {% if a.status == "cancelled" %}<span class="badge badge-no_action">Cancelled</span>
+            {% elif a.start_time < now %}<span class="badge badge-in_progress">Past</span>
+            {% else %}<span class="badge badge-registered">Upcoming</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty empty-compact"><p>No appointments booked.</p></div>
+  {% endif %}
+</section>
+
+<section class="section" aria-labelledby="h-calls">
+  <h2 id="h-calls">Call history</h2>
+  {% if call_logs %}
+  <ol class="call-list">
+    {% for c in call_logs %}
+    <li class="call">
+      <div class="call-head">
+        {{ outcome_badge(c.outcome) }}
+        <span class="call-meta">{{ (c.started_at or c.created_at) | dt }} · {{ c.duration_seconds | duration }}</span>
+        {% if c.ended_reason %}<span class="call-meta muted">Ended: {{ c.ended_reason }}</span>{% endif %}
+      </div>
+      {% if c.summary %}
+      <p class="call-summary">{{ c.summary }}</p>
+      {% endif %}
+      {% if c.transcript %}
+      <details>
+        <summary>Show transcript</summary>
+        <pre class="transcript">{{ c.transcript }}</pre>
+      </details>
+      {% elif not c.summary %}
+      <p class="muted">No transcript available yet.</p>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <div class="empty empty-compact"><p>No calls linked to this patient. Patients created through the API have no call history.</p></div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,18 @@
+{% macro outcome_badge(outcome) -%}
+{%- set labels = {
+  "registered": "Registered",
+  "updated": "Updated",
+  "abandoned": "Abandoned",
+  "failed": "Save failed",
+  "in_progress": "In progress",
+  "no_action": "No action",
+} -%}
+<span class="badge badge-{{ outcome }}">{{ labels.get(outcome, outcome) }}</span>
+{%- endmacro %}
+
+{% macro field(label, value) -%}
+<div class="field-row">
+  <dt>{{ label }}</dt>
+  <dd>{% if value %}{{ value }}{% else %}<span class="muted">Not provided</span>{% endif %}</dd>
+</div>
+{%- endmacro %}

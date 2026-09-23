@@ -17,6 +17,11 @@ access_logger = logging.getLogger("app.access")
 
 REQUEST_ID_HEADER = "X-Request-ID"
 
+_DASHBOARD_CSP = (
+    "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; "
+    "base-uri 'none'; frame-ancestors 'none'"
+)
+
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
     """Reuse the incoming X-Request-ID or generate one; echo it back; expose it for logging."""
@@ -66,4 +71,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
+        if request.url.path.startswith("/dashboard"):
+            # PHI pages: nothing but our own CSS, never cached, never indexed.
+            response.headers["Content-Security-Policy"] = _DASHBOARD_CSP
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["X-Robots-Tag"] = "noindex, nofollow"
         return response

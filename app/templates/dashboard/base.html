@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{% block title %}Dashboard{% endblock %} · Patient Registration</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="/dashboard">
+        <span class="brand-mark" aria-hidden="true">+</span>
+        <span>Patient Registration</span>
+      </a>
+      {% if not hide_nav %}
+      <nav aria-label="Primary">
+        <ul class="nav">
+          <li><a href="/dashboard" {% if active == "patients" %}aria-current="page"{% endif %}>Patients</a></li>
+          <li><a href="/dashboard/calls" {% if active == "calls" %}aria-current="page"{% endif %}>Calls</a></li>
+        </ul>
+      </nav>
+      {% endif %}
+    </div>
+  </header>
+
+  <main id="main" class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      Read-only view · Times shown in Eastern Time (ET) · Contains PHI — do not share
+    </div>
+  </footer>
+</body>
+</html>

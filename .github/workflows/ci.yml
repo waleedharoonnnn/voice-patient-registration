@@ -17,7 +17,7 @@ jobs:
           POSTGRES_PASSWORD: voiceai
           POSTGRES_DB: voiceai_test
         ports:
-          - 5432:5432
+          - 5544:5432
         options: >-
           --health-cmd "pg_isready -U voiceai -d voiceai_test"
           --health-interval 5s
@@ -26,8 +26,9 @@ jobs:
 
     env:
       APP_ENV: test
-      DATABASE_URL: postgresql+asyncpg://voiceai:voiceai@localhost:5432/voiceai_test
-      DATABASE_URL_DIRECT: postgresql+asyncpg://voiceai:voiceai@localhost:5432/voiceai_test
+      DATABASE_URL: postgresql+asyncpg://voiceai:voiceai@localhost:5544/voiceai_test
+      DATABASE_URL_DIRECT: postgresql+asyncpg://voiceai:voiceai@localhost:5544/voiceai_test
+      TEST_DATABASE_URL: postgresql+asyncpg://voiceai:voiceai@localhost:5544/voiceai_test
       API_KEY: ci-api-key
       VAPI_WEBHOOK_SECRET: ci-webhook-secret
       DASHBOARD_USERNAME: ci-dashboard-user

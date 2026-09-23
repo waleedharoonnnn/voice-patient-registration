@@ -13,8 +13,9 @@ from httpx import ASGITransport, AsyncClient
 
 _REQUIRED_ENV: dict[str, str] = {
     "APP_ENV": "test",
-    "DATABASE_URL": "postgresql+asyncpg://voiceai:voiceai@localhost:5432/voiceai_test",
-    "DATABASE_URL_DIRECT": "postgresql+asyncpg://voiceai:voiceai@localhost:5432/voiceai_test",
+    "DATABASE_URL": "postgresql+asyncpg://voiceai:voiceai@localhost:5544/voiceai_test",
+    "DATABASE_URL_DIRECT": "postgresql+asyncpg://voiceai:voiceai@localhost:5544/voiceai_test",
+    "TEST_DATABASE_URL": "postgresql+asyncpg://voiceai:voiceai@localhost:5544/voiceai_test",
     "API_KEY": "test-api-key",
     "VAPI_WEBHOOK_SECRET": "test-webhook-secret",
     "DASHBOARD_USERNAME": "test-dashboard-user",

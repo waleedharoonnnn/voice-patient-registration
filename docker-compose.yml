@@ -6,7 +6,10 @@ services:
       POSTGRES_PASSWORD: voiceai
       POSTGRES_DB: voiceai_test
     ports:
-      - "5432:5432"
+      # Host port 5544, not 5432: this machine has multiple local Postgres installs
+      # already bound to 5432/5433/5434, which silently win connections meant for
+      # this container.
+      - "5544:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:

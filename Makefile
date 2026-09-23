@@ -1,4 +1,4 @@
-.PHONY: install run lint format typecheck test check
+.PHONY: install run lint format typecheck test check migrate migration seed db-up db-down
 
 install:
 	uv sync
@@ -23,3 +23,18 @@ check:
 	uv run ruff format --check .
 	uv run mypy app
 	uv run pytest
+
+migrate:
+	uv run alembic upgrade head
+
+migration:
+	uv run alembic revision --autogenerate -m "$(m)"
+
+seed:
+	uv run python -m scripts.seed
+
+db-up:
+	docker compose up -d
+
+db-down:
+	docker compose down

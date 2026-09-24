@@ -81,6 +81,15 @@ async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     details = jsonable_encoder(exc.errors())
+    # A body that isn't parseable JSON is a malformed request (400), not a well-formed
+    # request with invalid values (422) — see CLAUDE.md §4.
+    if any(error.get("type") == "json_invalid" for error in exc.errors()):
+        return _envelope_response(
+            status.HTTP_400_BAD_REQUEST,
+            ErrorBody(
+                code="malformed_request", message="Request body is not valid JSON.", details=None
+            ),
+        )
     return _envelope_response(
         status.HTTP_422_UNPROCESSABLE_CONTENT,
         ErrorBody(code="validation_failed", message="Request validation failed.", details=details),
@@ -112,6 +121,8 @@ def _code_for_status(status_code: int) -> str:
 
 def register_exception_handlers(app: FastAPI) -> None:
     """Wire every handler needed so no error path ever bypasses the envelope."""
+    # The type ignores below: Starlette types handlers as taking `Exception`, but each
+    # handler here is (correctly) narrowed to the exception class it's registered for.
     app.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(HTTPException, http_exception_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]

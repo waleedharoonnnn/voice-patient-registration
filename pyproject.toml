@@ -17,6 +17,7 @@ dependencies = [
     "email-validator>=2.2",
     "jinja2>=3.1",
     "tzdata>=2024.1",
+    "limits>=3.13",
 ]
 
 [dependency-groups]
@@ -54,12 +55,8 @@ select = [
     "SIM", # simplify
     "RUF", # ruff-specific
 ]
-ignore = [
-    "S101",  # assert is fine in tests
-    "UP046", # Generic[T] kept for pydantic v2 generic model compatibility
-]
-
 [tool.ruff.lint.per-file-ignores]
+# Tests: assert is the test idiom (S101); fake credentials in fixtures are not secrets (S105/S106).
 "tests/**/*.py" = ["S101", "S105", "S106"]
 
 [tool.ruff.lint.isort]

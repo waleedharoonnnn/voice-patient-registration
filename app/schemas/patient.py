@@ -138,22 +138,22 @@ class PatientCreate(_PatientFieldValidators, BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    first_name: str
-    last_name: str
+    first_name: str = Field(max_length=50)
+    last_name: str = Field(max_length=50)
     date_of_birth: date
-    sex: str
-    phone_number: str
-    email: str | None = None
-    address_line_1: str
-    address_line_2: str | None = None
-    city: str
-    state: str
-    zip_code: str
-    insurance_provider: str | None = None
-    insurance_member_id: str | None = None
-    preferred_language: str = "English"
-    emergency_contact_name: str | None = None
-    emergency_contact_phone: str | None = None
+    sex: str = Field(max_length=20)
+    phone_number: str = Field(max_length=30)
+    email: str | None = Field(default=None, max_length=254)
+    address_line_1: str = Field(max_length=100)
+    address_line_2: str | None = Field(default=None, max_length=100)
+    city: str = Field(max_length=100)
+    state: str = Field(max_length=30)
+    zip_code: str = Field(max_length=15)
+    insurance_provider: str | None = Field(default=None, max_length=100)
+    insurance_member_id: str | None = Field(default=None, max_length=50)
+    preferred_language: str = Field(default="English", max_length=50)
+    emergency_contact_name: str | None = Field(default=None, max_length=50)
+    emergency_contact_phone: str | None = Field(default=None, max_length=30)
 
 
 class PatientUpdate(_PatientFieldValidators, BaseModel):
@@ -167,22 +167,22 @@ class PatientUpdate(_PatientFieldValidators, BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    first_name: str | None = None
-    last_name: str | None = None
+    first_name: str | None = Field(default=None, max_length=50)
+    last_name: str | None = Field(default=None, max_length=50)
     date_of_birth: date | None = None
-    sex: str | None = None
-    phone_number: str | None = None
-    email: str | None = None
-    address_line_1: str | None = None
-    address_line_2: str | None = None
-    city: str | None = None
-    state: str | None = None
-    zip_code: str | None = None
-    insurance_provider: str | None = None
-    insurance_member_id: str | None = None
-    preferred_language: str | None = None
-    emergency_contact_name: str | None = None
-    emergency_contact_phone: str | None = None
+    sex: str | None = Field(default=None, max_length=20)
+    phone_number: str | None = Field(default=None, max_length=30)
+    email: str | None = Field(default=None, max_length=254)
+    address_line_1: str | None = Field(default=None, max_length=100)
+    address_line_2: str | None = Field(default=None, max_length=100)
+    city: str | None = Field(default=None, max_length=100)
+    state: str | None = Field(default=None, max_length=30)
+    zip_code: str | None = Field(default=None, max_length=15)
+    insurance_provider: str | None = Field(default=None, max_length=100)
+    insurance_member_id: str | None = Field(default=None, max_length=50)
+    preferred_language: str | None = Field(default=None, max_length=50)
+    emergency_contact_name: str | None = Field(default=None, max_length=50)
+    emergency_contact_phone: str | None = Field(default=None, max_length=30)
 
     @model_validator(mode="after")
     def _reject_null_required_fields(self) -> Self:
@@ -234,13 +234,17 @@ class PatientListQuery(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    last_name: str | None = Field(default=None, description="Case-insensitive exact match.")
+    last_name: str | None = Field(
+        default=None, max_length=50, description="Case-insensitive exact match."
+    )
     # Deliberately `str`, not `date`: FastAPI resolves a Depends()-model's fields using
     # their own annotation *before* this model's validators run, so a `date`-typed field
     # would only ever accept ISO format (rejecting MM/DD/YYYY at the FastAPI layer,
     # before app.validation.dates.parse_dob ever saw it). The router parses this string.
-    date_of_birth: str | None = Field(default=None, description="MM/DD/YYYY or YYYY-MM-DD.")
-    phone_number: str | None = None
+    date_of_birth: str | None = Field(
+        default=None, max_length=20, description="MM/DD/YYYY or YYYY-MM-DD."
+    )
+    phone_number: str | None = Field(default=None, max_length=30)
     limit: int = Field(default=50, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
 

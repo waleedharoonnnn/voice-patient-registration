@@ -10,16 +10,19 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 
 from app.api.routers import health, patients, providers, vapi
 from app.api.routers.dashboard import register_dashboard
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
-from app.core.middleware import AccessLogMiddleware, RequestIdMiddleware, SecurityHeadersMiddleware
-from app.core.rate_limit import limiter, rate_limit_exceeded_handler
+from app.core.middleware import (
+    AccessLogMiddleware,
+    BodySizeLimitMiddleware,
+    RequestIdMiddleware,
+    SecurityHeadersMiddleware,
+)
+from app.core.rate_limit import RateLimitMiddleware
 from app.db.session import dispose_engine
 
 logger = logging.getLogger(__name__)
@@ -45,22 +48,24 @@ def create_app() -> FastAPI:
             "confirms, and stores US patient demographics."
         ),
         lifespan=lifespan,
+        docs_url="/docs" if settings.ENABLE_API_DOCS else None,
+        redoc_url="/redoc" if settings.ENABLE_API_DOCS else None,
+        openapi_url="/openapi.json" if settings.ENABLE_API_DOCS else None,
     )
-
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # type: ignore[arg-type]
-    app.add_middleware(SlowAPIMiddleware)
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGINS,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_headers=["Content-Type", "X-API-Key", "X-Request-ID"],
     )
-    app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(RateLimitMiddleware, limit=settings.RATE_LIMIT_DEFAULT)
+    app.add_middleware(SecurityHeadersMiddleware, hsts=settings.ENABLE_HSTS)
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(RequestIdMiddleware)
+    # Outermost: reject oversized bodies before any other work happens.
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.MAX_REQUEST_BODY_BYTES)
 
     register_exception_handlers(app)
 

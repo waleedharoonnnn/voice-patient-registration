@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 from pydantic import BaseModel
-
-T = TypeVar("T")
 
 
 class ErrorBody(BaseModel):
@@ -17,7 +15,7 @@ class ErrorBody(BaseModel):
     details: Any | None = None
 
 
-class Envelope(BaseModel, Generic[T]):
+class Envelope[T](BaseModel):
     """`{"data": ..., "error": ...}` — exactly one of the two is non-null."""
 
     data: T | None = None

@@ -17,6 +17,9 @@ _REQUIRED_ENV: dict[str, str] = {
     "DATABASE_URL_DIRECT": "postgresql+asyncpg://voiceai:voiceai@localhost:5544/voiceai_test",
     "TEST_DATABASE_URL": "postgresql+asyncpg://voiceai:voiceai@localhost:5544/voiceai_test",
     "DB_SSL_REQUIRE": "false",
+    # The suite makes hundreds of requests a minute from one client; the real limit is
+    # exercised by tests/integration/test_security.py with its own small value.
+    "RATE_LIMIT_DEFAULT": "100000/minute",
     "API_KEY": "test-api-key",
     "VAPI_WEBHOOK_SECRET": "test-webhook-secret",
     "DASHBOARD_USERNAME": "test-dashboard-user",

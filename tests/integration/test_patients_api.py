@@ -67,6 +67,24 @@ async def test_create_patient_validation_failure(client: AsyncClient) -> None:
     _assert_envelope_error(response.json(), "validation_failed")
 
 
+async def test_create_patient_malformed_json_is_400(client: AsyncClient) -> None:
+    response = await client.post(
+        "/patients",
+        content=b'{"first_name": ',
+        headers={**API_KEY, "Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "data": None,
+        "error": {
+            "code": "malformed_request",
+            "message": "Request body is not valid JSON.",
+            "details": None,
+        },
+    }
+
+
 async def test_create_patient_rejects_extra_fields(client: AsyncClient) -> None:
     response = await client.post(
         "/patients", json={**VALID_PATIENT, "unexpected_field": "x"}, headers=API_KEY

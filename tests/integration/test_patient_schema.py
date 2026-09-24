@@ -26,7 +26,7 @@ _VALID_PATIENT: dict[str, object] = {
 
 _INSERT_COLUMNS = ", ".join(_VALID_PATIENT)
 _INSERT_PARAMS = ", ".join(f":{col}" for col in _VALID_PATIENT)
-_INSERT_SQL = f"INSERT INTO patients ({_INSERT_COLUMNS}) VALUES ({_INSERT_PARAMS})"  # noqa: S608
+_INSERT_SQL = f"INSERT INTO patients ({_INSERT_COLUMNS}) VALUES ({_INSERT_PARAMS})"  # noqa: S608 (fixed column names, values are bound params)
 
 
 async def _insert(conn: AsyncConnection, **overrides: object) -> None:

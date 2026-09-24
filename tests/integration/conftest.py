@@ -5,12 +5,16 @@ leak state to each other or share an asyncpg connection across event loops.
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from contextlib import asynccontextmanager
+from typing import Any
 
 import pytest
 import pytest_asyncio
 from alembic import command
 from alembic.config import Config
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
@@ -77,3 +81,37 @@ async def clean_patients_table(
         await conn.execute(text("TRUNCATE TABLE appointments, call_logs, patients"))
     await engine.dispose()
     yield
+
+
+AppFactory = Callable[..., Any]
+
+
+@pytest.fixture
+def custom_client(monkeypatch: pytest.MonkeyPatch) -> AppFactory:
+    """Build an app with extra env overrides (settings are read at create_app time)."""
+
+    @asynccontextmanager
+    async def _make(**env: str) -> AsyncIterator[AsyncClient]:
+        from app.core.config import get_settings
+        from app.main import create_app
+
+        for key, value in env.items():
+            monkeypatch.setenv(key, value)
+        get_settings.cache_clear()
+        app: FastAPI = create_app()
+        # raise_app_exceptions=False: behave like a real server — Starlette re-raises an
+        # unhandled error *after* sending the 500 envelope, and we want to assert on that
+        # response rather than the re-raised exception.
+        transport = ASGITransport(app=app, raise_app_exceptions=False)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            yield client
+        # Same teardown as the shared `app` fixture: the cached engine is bound to this
+        # test's event loop and must not leak into the next test.
+        from app.db.session import dispose_engine, get_engine, get_session_factory
+
+        await dispose_engine()
+        get_engine.cache_clear()
+        get_session_factory.cache_clear()
+        get_settings.cache_clear()
+
+    return _make

@@ -278,5 +278,6 @@ def register_dashboard(app: FastAPI) -> None:
         response.headers["WWW-Authenticate"] = 'Basic realm="Patient dashboard", charset="UTF-8"'
         return response
 
+    # type ignore: Starlette types handlers as taking `Exception`; ours is narrowed.
     app.add_exception_handler(DashboardAuthError, _auth_error_handler)  # type: ignore[arg-type]
     app.include_router(router)

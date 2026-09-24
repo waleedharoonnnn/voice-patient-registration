@@ -10,7 +10,7 @@ def test_settings_raises_when_required_vars_missing(unset_env: None) -> None:
     from app.core.config import Settings
 
     with pytest.raises(ValidationError) as exc_info:
-        Settings(_env_file=None)  # type: ignore[call-arg]
+        Settings(_env_file=None)  # type: ignore[call-arg]  # pydantic-settings init kwarg
 
     missing_fields = {error["loc"][0] for error in exc_info.value.errors()}
     assert "DATABASE_URL" in missing_fields
@@ -20,7 +20,7 @@ def test_settings_raises_when_required_vars_missing(unset_env: None) -> None:
 def test_settings_loads_when_required_vars_present(_env: None) -> None:
     from app.core.config import Settings
 
-    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]  # pydantic-settings init kwarg
 
     assert settings.API_KEY.get_secret_value() == "test-api-key"
     assert settings.APP_ENV == "test"
@@ -32,6 +32,6 @@ def test_cors_origins_accepts_comma_separated_string(
     from app.core.config import Settings
 
     monkeypatch.setenv("CORS_ORIGINS", "http://a.com, http://b.com")
-    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]  # pydantic-settings init kwarg
 
     assert settings.CORS_ORIGINS == ["http://a.com", "http://b.com"]

@@ -54,9 +54,10 @@ def require_vapi_secret(
         raise UnauthorizedError("Missing or invalid Vapi webhook secret.")
 
 
-def _build_context(db: AsyncSession, call_id: str) -> ToolContext:
+def _build_context(db: AsyncSession, call_id: str, caller_number: str | None = None) -> ToolContext:
     return ToolContext(
         call_id=call_id,
+        caller_number=caller_number,
         patient_service=PatientService(PatientRepository(db)),
         call_log_service=CallLogService(CallLogRepository(db)),
         appointment_service=AppointmentService(AppointmentRepository(db), ProviderRepository(db)),
@@ -162,7 +163,7 @@ async def _handle_tool_calls(message: VapiMessage, call_id: str) -> dict[str, An
     speakable SAVE_FAILED instead of letting the request fail."""
     try:
         async with webhook_session() as db:
-            ctx = _build_context(db, call_id)
+            ctx = _build_context(db, call_id, message.caller_number())
             results = [await _dispatch_tool_call(tc, ctx) for tc in message.toolCallList]
     except Exception:
         # Reached only when the session can't open or commit (DB down, timeout at commit).

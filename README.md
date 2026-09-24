@@ -121,7 +121,12 @@ without a code change via `VAPI_TRANSCRIBER_OVERRIDE` / `VAPI_MODEL_OVERRIDE` /
 - **Flow:** name → required fields in natural groups → duplicate check → optional fields
   offered (spec wording) → three-chunk read-back → save → appointment offer → "You're all
   set, [First Name]."
-- **Tools** ([`docs/voice-tools.md`](docs/voice-tools.md)): `validate_fields`,
+- **Returning callers (caller ID):** at the start of every call `identify_caller` checks
+  the caller's number. On a match, Sarah asks for their date of birth **before revealing
+  anything** (`verify_caller`). Then she greets them by first name, mentions any upcoming
+  appointment, and offers to update their info or book a new appointment.
+- **Tools** ([`docs/voice-tools.md`](docs/voice-tools.md)): `identify_caller`,
+  `verify_caller`, `validate_fields`,
   `find_patient_by_phone`, `create_patient`, `update_patient`, `get_available_slots`,
   `book_appointment`, plus Vapi's `endCall`. Every tool returns a short, prefixed,
   speakable string (`VALID`, `INVALID`, `SAVED`, `SAVE_FAILED`, `BOOKED`, `SLOT_TAKEN`, …)
@@ -183,7 +188,7 @@ trace).
 
 | Bonus | How to try it |
 |---|---|
-| Duplicate detection → update | Call twice from the same number |
+| Duplicate detection → update | Call twice from the same phone: caller ID is recognized, DOB verified, then update or book (and any upcoming appointment is mentioned) |
 | Appointment scheduling (mock) | Say yes to the offer after registering ([ADR 0008](docs/adr/0008-mock-appointment-scheduling.md)) |
 | Transcript and summary linked to patient | Dashboard patient page, or `GET /patients/{id}/calls` ([ADR 0007](docs/adr/0007-call-logs-and-transcripts.md)) |
 | Dashboard | `/dashboard`: patients, search, per-patient calls and appointments, a follow-up queue of failed/abandoned calls ([ADR 0009](docs/adr/0009-server-rendered-dashboard.md)) |

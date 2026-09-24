@@ -1,8 +1,31 @@
 # Voice tools
 
-Handlers: `app/voice/tools.py` (6 tools). JSON schemas: `vapi/tools/*.json`
+Handlers: `app/voice/tools.py` (8 tools). JSON schemas: `vapi/tools/*.json`
 (pushed to Vapi by `make sync-vapi`). Never raise; every result is a short string the system
 prompt can act on or speak. Result prefixes are the contract between code and prompt.
+
+## `identify_caller()` — no arguments
+
+Called once at the start of a call. Reads the caller ID from the webhook payload
+(`message.customer.number`, falling back to `message.call.customer.number`). The model
+never supplies it. **Returns no personal details**, because caller ID can be spoofed or
+shared by a family.
+
+- `NO_CALLER_ID`: web call, withheld number, or not a US number
+- `NO_MATCH`: no active patient has this number
+- `CALLER_ON_FILE`: at least one active patient has this number
+
+## `verify_caller(date_of_birth: string)`
+
+Caller ID plus the stated DOB. The DOB both proves identity and picks the right record
+when several patients share a phone.
+
+- `VERIFIED: patient_id=…; first_name=…; upcoming_appointments=<spoken times with doctor, " | "-separated, or none>`
+- `IDENTITY_MISMATCH`: no patient on this number has that DOB (nothing revealed)
+- `INVALID: date_of_birth: …`, or `NO_CALLER_ID`
+
+After `VERIFIED`, the existing `update_patient` (DOB re-checked server-side) and
+`book_appointment` tools are used with the returned `patient_id`.
 
 ## `validate_fields(fields: object)`
 

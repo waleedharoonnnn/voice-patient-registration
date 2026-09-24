@@ -1,0 +1,8 @@
+{
+  "name": "identify_caller",
+  "description": "Check whether the caller's phone number (caller ID) is already on file. Call this once, at the very start of the call, before asking for anything. Returns no personal details.",
+  "parameters": {
+    "type": "object",
+    "properties": {}
+  }
+}

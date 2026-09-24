@@ -2,7 +2,8 @@
 
 Result-string prefixes below are a contract with the system prompt (documented in
 docs/voice-tools.md): VALID/INVALID, NO_MATCH/MATCH, SAVED/ALREADY_SAVED/SAVE_FAILED,
-UPDATED/IDENTITY_MISMATCH/NOT_FOUND, SLOTS/NO_SLOTS, BOOKED/SLOT_TAKEN/BOOK_FAILED.
+UPDATED/IDENTITY_MISMATCH/NOT_FOUND, SLOTS/NO_SLOTS, BOOKED/SLOT_TAKEN/BOOK_FAILED,
+NO_CALLER_ID/CALLER_ON_FILE/VERIFIED.
 """
 
 from __future__ import annotations
@@ -44,6 +45,9 @@ NO_SLOTS = "NO_SLOTS"
 BOOKED = "BOOKED"
 SLOT_TAKEN = "SLOT_TAKEN"
 BOOK_FAILED = "BOOK_FAILED"
+NO_CALLER_ID = "NO_CALLER_ID"
+CALLER_ON_FILE = "CALLER_ON_FILE"
+VERIFIED = "VERIFIED"
 
 
 @dataclass
@@ -54,6 +58,8 @@ class ToolContext:
     patient_service: PatientService
     call_log_service: CallLogService
     appointment_service: AppointmentService
+    # Caller ID as Vapi sent it (E.164); None on web calls or withheld numbers.
+    caller_number: str | None = None
 
 
 def _format_validation_error(exc: ValidationError) -> str:
@@ -172,6 +178,58 @@ async def update_patient(arguments: ToolArguments, ctx: ToolContext) -> str:
     return f"{UPDATED}: patient_id={patient.patient_id}; first_name={patient.first_name}"
 
 
+def _caller_phone(ctx: ToolContext) -> str | None:
+    """The caller ID as a normalized US number, or None if absent or not a US number."""
+    if not ctx.caller_number:
+        return None
+    try:
+        return normalize_us_phone(ctx.caller_number, field_name="Caller ID")
+    except ValueError:
+        return None
+
+
+async def identify_caller(arguments: ToolArguments, ctx: ToolContext) -> str:
+    """Is the caller ID on file? Deliberately reveals NO name or details: caller ID can be
+    spoofed or shared, so nothing is disclosed until `verify_caller` checks the DOB."""
+    phone = _caller_phone(ctx)
+    if phone is None:
+        return NO_CALLER_ID
+    if not await ctx.patient_service.find_by_phone(phone):
+        return NO_MATCH
+    return CALLER_ON_FILE
+
+
+async def verify_caller(arguments: ToolArguments, ctx: ToolContext) -> str:
+    """Caller ID + stated DOB → the patient's first name, id, and upcoming appointments."""
+    phone = _caller_phone(ctx)
+    if phone is None:
+        return NO_CALLER_ID
+
+    raw_dob = arguments.get("date_of_birth")
+    if not raw_dob:
+        return f"{INVALID}: date_of_birth: Date of birth is required to verify identity."
+    try:
+        dob = parse_dob(str(raw_dob))
+    except ValueError as exc:
+        return f"{INVALID}: date_of_birth: {exc}"
+
+    patient = await ctx.patient_service.find_verified_by_phone(phone, dob)
+    if patient is None:
+        return IDENTITY_MISMATCH
+
+    upcoming = await ctx.appointment_service.upcoming_for_patient(patient.patient_id)
+    rendered = (
+        " | ".join(
+            f"{_speak_time(appt.start_time)} Eastern with {provider}" for appt, provider in upcoming
+        )
+        or "none"
+    )
+    return (
+        f"{VERIFIED}: patient_id={patient.patient_id}; first_name={patient.first_name}; "
+        f"upcoming_appointments={rendered}"
+    )
+
+
 def _speak_time(dt: datetime) -> str:
     """'Tuesday, October 6 at 10:30 AM', in the clinic's local timezone."""
     tz = ZoneInfo(get_settings().CLINIC_TIMEZONE)
@@ -243,6 +301,8 @@ async def book_appointment(arguments: ToolArguments, ctx: ToolContext) -> str:
 
 
 TOOL_HANDLERS = {
+    "identify_caller": identify_caller,
+    "verify_caller": verify_caller,
     "validate_fields": validate_fields,
     "find_patient_by_phone": find_patient_by_phone,
     "create_patient": create_patient,

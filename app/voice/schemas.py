@@ -12,10 +12,19 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+class VapiCustomer(BaseModel):
+    """The caller. `number` is the caller ID (E.164) on phone calls; absent on web calls."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    number: str | None = None
+
+
 class VapiCall(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str
+    customer: VapiCustomer | None = None
 
 
 class VapiToolFunction(BaseModel):
@@ -68,6 +77,7 @@ class VapiMessage(BaseModel):
 
     type: str
     call: VapiCall | None = None
+    customer: VapiCustomer | None = None
     toolCallList: list[VapiToolCall] = Field(default_factory=list)
     # end-of-call-report fields (all optional: absent for other message types).
     endedReason: str | None = None
@@ -75,6 +85,13 @@ class VapiMessage(BaseModel):
     endedAt: str | None = None
     artifact: VapiArtifact | None = None
     analysis: VapiAnalysis | None = None
+
+    def caller_number(self) -> str | None:
+        """Caller ID from `message.customer`, falling back to `message.call.customer`."""
+        for customer in (self.customer, self.call.customer if self.call else None):
+            if customer and customer.number:
+                return customer.number
+        return None
 
 
 class VapiWebhookPayload(BaseModel):

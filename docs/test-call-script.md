@@ -25,6 +25,9 @@ actually saved.
 | 16 | Slot taken | While on a call, book the offered slot for a different patient via a second call (or the webhook), then pick it on the first call | `SLOT_TAKEN`; Sarah apologizes lightly and offers another time |
 | 17 | Decline scheduling | Finish scenario 1, say no to scheduling | No pressure, no second ask; "You're all set, [name]" and the call ends |
 | 18 | Dropped call follow-up | Hang up mid-registration, then open `/dashboard/calls?outcome=abandoned` | The call shows as Abandoned / Needs follow-up with its transcript |
+| 19 | Returning caller (caller ID) | After scenario 1, call again **from the same phone** | "I see this number is on file"; asks for DOB before saying any name; then greets you by first name and offers update or a new appointment |
+| 20 | Returning caller with an appointment | After scenario 15, call again from the same phone and verify DOB | Tells you the upcoming appointment (day, time, Eastern, doctor); changes to it go to the front desk |
+| 21 | Wrong DOB on caller ID | Call from a registered phone, give a wrong DOB twice | Reveals nothing, offers to register a new patient instead |
 
 ## Keeping calls short
 

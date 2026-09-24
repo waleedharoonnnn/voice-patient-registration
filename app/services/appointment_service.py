@@ -139,6 +139,14 @@ class AppointmentService:
     async def list_for_patient(self, patient_id: uuid.UUID) -> list[Appointment]:
         return await self._appointments.list_for_patient(patient_id)
 
+    async def upcoming_for_patient(self, patient_id: uuid.UUID) -> list[tuple[Appointment, str]]:
+        """A patient's next booked appointments with each provider's name, soonest first."""
+        appointments = await self._appointments.list_upcoming_for_patient(
+            patient_id, datetime.now(UTC)
+        )
+        names = {p.provider_id: p.full_name for p in await self._providers.list_active()}
+        return [(a, names.get(a.provider_id, "your provider")) for a in appointments]
+
     async def list_providers(self) -> list[Provider]:
         return await self._providers.list_active()
 

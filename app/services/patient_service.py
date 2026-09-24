@@ -105,6 +105,19 @@ class PatientService:
         """Active (non-soft-deleted) matches only."""
         return await self._repository.find_active_by_phone(phone_number)
 
+    async def find_verified_by_phone(
+        self, phone_number: str, date_of_birth: date
+    ) -> Patient | None:
+        """Caller-ID identification: the active patient on this phone whose DOB matches.
+
+        Several patients can share a phone (family line), so the DOB both proves identity
+        and picks which record is theirs.
+        """
+        for patient in await self._repository.find_active_by_phone(phone_number):
+            if patient.date_of_birth == date_of_birth:
+                return patient
+        return None
+
     async def verify_identity(self, patient_id: uuid.UUID, date_of_birth: date) -> bool:
         """Used before voice-initiated updates: does the caller know the DOB on file?"""
         patient = await self._repository.get_by_id(patient_id)

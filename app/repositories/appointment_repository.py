@@ -50,6 +50,23 @@ class AppointmentRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_upcoming_for_patient(
+        self, patient_id: uuid.UUID, now: datetime, limit: int = 3
+    ) -> list[Appointment]:
+        """Booked (not cancelled) appointments from `now` on, soonest first."""
+        stmt = (
+            select(Appointment)
+            .where(
+                Appointment.patient_id == patient_id,
+                Appointment.status == "booked",
+                Appointment.start_time >= now,
+            )
+            .order_by(Appointment.start_time.asc())
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
     async def count_upcoming(self, now: datetime) -> int:
         stmt = (
             select(func.count())

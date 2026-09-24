@@ -1,0 +1,14 @@
+{
+  "name": "verify_caller",
+  "description": "After identify_caller returned CALLER_ON_FILE, verify the caller by the date of birth they state. On success returns their first name, patient_id, and any upcoming appointments.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "date_of_birth": {
+        "type": "string",
+        "description": "Date of birth exactly as the caller stated it, e.g. MM/DD/YYYY."
+      }
+    },
+    "required": ["date_of_birth"]
+  }
+}

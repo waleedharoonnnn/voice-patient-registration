@@ -1,6 +1,6 @@
 {
   "name": "Sarah - Patient Registration",
-  "firstMessage": "Thanks for calling! This is Sarah, the virtual assistant here to help you register as a new patient. Can I start with your full name?",
+  "firstMessage": "Thanks for calling! This is Sarah, the clinic's virtual assistant. I can help you register as a new patient, update your information, or book an appointment. How can I help today?",
   "firstMessageInterruptionsEnabled": true,
   "model": {
     "provider": "openai",

@@ -1,264 +1,332 @@
 # Voice AI Patient Registration Agent
 
-CareCloud take-home assessment: a voice agent that collects US patient demographics over
-a phone call, reads them back for confirmation, and saves them via a REST API backed by
-Neon Postgres.
+[![CI](https://github.com/waleedharoonnnn/voice-patient-registration/actions/workflows/ci.yml/badge.svg)](https://github.com/waleedharoonnnn/voice-patient-registration/actions/workflows/ci.yml)
 
-## Overview
+A caller dials a US number and talks to **Sarah**, a voice agent that collects their
+demographics conversationally, validates each field as they go, reads everything back,
+saves the record, and offers a first appointment. A FastAPI service exposes the same data
+through a REST API and a read-only staff dashboard, backed by Neon Postgres.
+(CareCloud take-home assessment. Spec: [`docs/assessment-spec.md`](docs/assessment-spec.md).)
 
-Callers dial a US number and talk to **Sarah**, a voice agent that collects their
-demographics, validates each field as they go, reads everything back in short chunks,
-and saves it. After saving, she offers to book a first appointment. Staff see every
-patient, appointment and call, including transcripts, in a read-only dashboard.
+## Quick links
 
-Core (spec §1–5): phone agent, patient data model, Postgres, REST API, voice ↔ DB
-integration. Bonus features: see [Bonus features](#bonus-features).
-
-## Live links
-
-- Phone number: `+1 (732) 782-5438` (assigned by `make sync-vapi`)
-- API base URL: `$PUBLIC_BASE_URL` (ngrok tunnel in dev), docs at `/docs`
-- Dashboard: `$PUBLIC_BASE_URL/dashboard`. HTTP Basic, credentials from
-  `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` (shared with reviewers separately, never
-  committed)
-
-## Bonus features
-
-| Bonus (spec) | Where |
+| What | Where |
 |---|---|
-| Duplicate detection → offer update | `find_patient_by_phone` + DOB-verified `update_patient` (prompt §3c) |
-| Appointment scheduling (mock) | `get_available_slots` / `book_appointment`; DB-enforced no double booking — [ADR 0008](docs/adr/0008-mock-appointment-scheduling.md) |
-| Multi-language | Spanish switch mid-call (prompt "Language"; Deepgram nova-3 multi) |
-| Transcript / summary linked to patient | `call_logs` from `end-of-call-report` — [ADR 0007](docs/adr/0007-call-logs-and-transcripts.md) |
-| Dashboard | `/dashboard` — [ADR 0009](docs/adr/0009-server-rendered-dashboard.md) |
-| Automated API tests | `make check` (unit + integration against real Postgres) |
+| Phone number | **+1 (732) 782-5438** |
+| API base URL | `<TBD after deployment>` (dev: an ngrok tunnel) |
+| API docs (Swagger) | `<API base URL>/docs` |
+| Dashboard | `<API base URL>/dashboard` (HTTP Basic) |
+| Credentials | Sent separately. Never committed. |
+| Requirement → code → test map | [`docs/requirements-traceability.md`](docs/requirements-traceability.md) |
+| Test-call scenarios | [`docs/test-call-script.md`](docs/test-call-script.md) |
+
+## Reviewer quick start
+
+1. **Call** +1 (732) 782-5438 and register as a new patient, using obviously fake details.
+   Try correcting a field during the read-back. Afterwards, accept the appointment offer.
+2. **Check the API.** Set `API_BASE` and `API_KEY` from the credentials email, then:
+   ```bash
+   # Search by the phone number you gave on the call
+   curl -s "$API_BASE/patients?phone_number=2125550100" -H "X-API-Key: $API_KEY"
+
+   # Create a patient directly (MM/DD/YYYY and messy phone formats are accepted)
+   curl -s -X POST "$API_BASE/patients" -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
+     -d '{"first_name":"Jane","last_name":"Doe","date_of_birth":"06/15/1985","sex":"Female",
+          "phone_number":"(212) 555-0100","address_line_1":"123 Main St","city":"Springfield",
+          "state":"IL","zip_code":"62704"}'
+
+   # See validation errors in the standard envelope
+   curl -s -X POST "$API_BASE/patients" -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
+     -d '{"first_name":"J4ne","date_of_birth":"01/01/2999"}'
+   ```
+3. **Open the dashboard** at `$API_BASE/dashboard`. The patient from your call appears
+   with its transcript, summary and appointment.
+4. **Call again from the same number.** Sarah finds the existing record and offers to
+   update it (after verifying your DOB) instead of creating a duplicate.
 
 ## Architecture
 
-See [`docs/adr/0002-layered-architecture.md`](docs/adr/0002-layered-architecture.md) for
-the layering rationale. Summary:
+```mermaid
+flowchart LR
+    caller([Caller]) -- PSTN --> vapi[Vapi<br/>STT · LLM · TTS]
+    vapi -- "tool-calls /<br/>end-of-call-report<br/>(X-Vapi-Secret)" --> webhook
+    client([API client]) -- "X-API-Key" --> rest
+    staff([Staff]) -- "HTTP Basic" --> dash
 
-```
-app/
-  main.py              # app factory: create_app(); wires routers, middleware, handlers
-  core/                # config, logging, errors, security, request-id middleware
-  db/                  # engine, session factory, Base
-  models/              # SQLAlchemy models: patients
-  schemas/             # Pydantic request/response models + envelope + patient schemas
-  validation/          # pure, dependency-free validators
-  repositories/        # DB access only: patient_repository
-  services/            # business logic: patient_service (used by REST AND voice)
-  api/
-    deps.py            # shared dependencies (db session, X-API-Key auth)
-    routers/           # health, patients, providers, vapi (webhook), dashboard
-  voice/               # Vapi payload parsing (schemas.py) + tool handlers (tools.py)
-  templates/, static/  # dashboard Jinja2 templates + one CSS file
-migrations/            # Alembic (0001_create_patients)
-vapi/                  # assistant.json, prompts/system_prompt.md, tools/*.json
-scripts/               # seed; sync_vapi (pushes vapi/ config to the Vapi API)
-tests/unit/            # pure logic, no DB
-tests/integration/     # API + DB against real Postgres
+    subgraph FastAPI
+      webhook[vapi router<br/>+ voice/tools.py]
+      rest[patients / providers<br/>routers]
+      dash[dashboard<br/>Jinja2, no JS]
+      svc[services<br/>patient · appointment · call_log]
+      repo[repositories]
+      webhook --> svc
+      rest --> svc
+      dash --> svc
+      svc --> repo
+    end
+    repo --> db[(Neon Postgres)]
 ```
 
-Dependency direction: `api`/`voice` -> `services` -> `repositories` -> `models`/`db`.
+**What happens during a registration call:**
+1. Vapi transcribes the caller, and GPT-4.1 (driven by the system prompt) decides what to ask next.
+2. The model calls `validate_fields` as data arrives. An `INVALID: <field>` result makes it
+   re-ask for that field specifically.
+3. After the phone number, it calls `find_patient_by_phone`. On a match it offers to update
+   instead of create.
+4. It reads everything back. On an explicit "yes" it calls `create_patient`, and the
+   webhook runs `PatientService.create`. This is the same service the REST API uses.
+5. The result string (`SAVED:` / `SAVE_FAILED:` …) is spoken back. When the call ends,
+   `end-of-call-report` stores the transcript and summary against the patient.
+
+**Layering** ([ADR 0002](docs/adr/0002-layered-architecture.md)): `api`/`voice` →
+`services` → `repositories` → `models`/`db`, never upward. Routers and tool handlers hold
+no business logic or SQL. Validation rules live once in `app/validation/`. Pydantic,
+the voice tools and DB CHECK constraints all enforce them.
+
+```
+app/  core/ db/ models/ schemas/ validation/ repositories/ services/ api/ voice/ templates/ static/
+migrations/  vapi/ (assistant.json, prompts/, tools/)  scripts/ (seed, sync_vapi)  tests/  docs/
+```
+
+## Tech stack
+
+| Concern | Choice | Why |
+|---|---|---|
+| API | Python 3.12, FastAPI, Pydantic v2 | Typed validation, async, OpenAPI docs for free ([ADR 0001](docs/adr/0001-tech-stack.md)) |
+| Data | SQLAlchemy 2.0 async + asyncpg, Alembic, Neon Postgres | Real constraints, migrations, serverless Postgres with branches |
+| Voice | Vapi, config as code in `vapi/` | Telephony, STT, LLM and TTS in one platform, versioned in git ([ADR 0006](docs/adr/0006-voice-platform-and-model.md)) |
+| Tooling | uv, ruff, mypy `--strict`, pytest, GitHub Actions, Docker | Reproducible from the lock file; strict types; tests on real Postgres |
+
+Voice stack, with Vapi's per-component figures:
+
+| Component | Choice | Cost | Latency |
+|---|---|---|---|
+| Transcriber | AssemblyAI Universal-Streaming (English) | $0.005/min | ~390 ms |
+| LLM | OpenAI GPT-4.1, temperature 0.3 | $0.025/min | ~690 ms |
+| Voice | Cartesia Sonic 3.5, "Aadhya - Soother" | $0.022/min | ~270 ms |
+| **Total** | | **$0.052/min** | ~1.35 s |
+
+Vapi's platform fee and telephony are billed on top. Any component can be rolled back
+without a code change via `VAPI_TRANSCRIBER_OVERRIDE` / `VAPI_MODEL_OVERRIDE` /
+`VAPI_VOICE_OVERRIDE` (ADR 0006).
+
+## Voice agent design
+
+- **Prompt:** [`vapi/prompts/system_prompt.md`](vapi/prompts/system_prompt.md), annotated
+  with HTML comments that are stripped before upload. Explained section by section in
+  [`docs/prompt-engineering.md`](docs/prompt-engineering.md).
+- **Flow:** name → required fields in natural groups → duplicate check → optional fields
+  offered (spec wording) → three-chunk read-back → save → appointment offer → "You're all
+  set, [First Name]."
+- **Tools** ([`docs/voice-tools.md`](docs/voice-tools.md)): `validate_fields`,
+  `find_patient_by_phone`, `create_patient`, `update_patient`, `get_available_slots`,
+  `book_appointment`, plus Vapi's `endCall`. Every tool returns a short, prefixed,
+  speakable string (`VALID`, `INVALID`, `SAVED`, `SAVE_FAILED`, `BOOKED`, `SLOT_TAKEN`, …)
+  and never raises, so the caller never hears silence.
+- **Turn-taking** is tuned for digits and spelling: longer endpointing after numbers,
+  Vapi smart endpointing, and quick barge-in.
+- **Config as code:** `make sync-vapi` idempotently upserts tools, the assistant and the
+  phone-number assignment. `make sync-vapi-dry-run` prints a field-level diff against the
+  live assistant first.
 
 ## Data model
 
-See [`docs/data-model.md`](docs/data-model.md) for the full column/constraint table and
-[`docs/adr/0003-patient-schema.md`](docs/adr/0003-patient-schema.md) for the reasoning
-(soft delete, non-unique phone, UTC timestamps, DB constraints as defense in depth,
-`source_call_id` idempotency, the future-DOB and `updated_at` triggers).
+`patients` has every spec field (19), plus `deleted_at` (soft delete) and
+`source_call_id` (voice idempotency). `call_logs`, `providers` and `appointments` support
+the bonus features. Full columns, constraints and an ERD are in
+[`docs/data-model.md`](docs/data-model.md), and the reasoning is in
+[ADR 0003](docs/adr/0003-patient-schema.md). Key rules:
+- Phone numbers are stored as 10 NANP digits.
+- DOB is a `date` between 1900-01-01 and today (enforced by a trigger).
+- State is a USPS code from an allow-list, and ZIP is 5 digits or ZIP+4.
+- Timestamps are UTC `timestamptz`, with `updated_at` maintained by a trigger.
 
-## Tech stack and justification
+## API reference
 
-See [`docs/adr/0001-tech-stack.md`](docs/adr/0001-tech-stack.md).
+All endpoints below need `X-API-Key`. Every response is `{"data": …, "error": null | {code, message, details}}`.
 
-## Setup
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/patients` | Filters: `last_name` (case-insensitive), `date_of_birth` (`MM/DD/YYYY` or ISO), `phone_number` (any format); `limit`/`offset` |
+| GET | `/patients/{id}` | 404 if missing, soft-deleted, or not a UUID |
+| POST | `/patients` | 201 with the created record and `patient_id` |
+| PUT | `/patients/{id}` | Partial update; `updated_at` changes |
+| DELETE | `/patients/{id}` | Soft delete (`deleted_at`); hidden from all reads afterwards |
+| GET | `/patients/{id}/appointments`, `/patients/{id}/calls` | Bookings; call logs with transcript and summary |
+| GET | `/providers` | Mock providers |
+| POST | `/vapi/webhook` | Vapi only (`X-Vapi-Secret`) |
+| GET | `/health`, `/health/ready` | Public: liveness; readiness (DB check, 503 if down) |
 
-Prerequisites: [`uv`](https://docs.astral.sh/uv/), Docker (for local Postgres in tests).
+Status codes: 200, 201, 400 (malformed JSON), 401, 404, 413 (body too large), 422
+(validation), 429 (rate limited, with `Retry-After`), 500 (generic message, never a stack
+trace).
+
+## Edge cases and resilience
+
+| Situation | Behavior | Test |
+|---|---|---|
+| Invalid DOB (future, impossible date, pre-1900) | `validate_fields` → `INVALID: date_of_birth …`; Sarah re-asks only that field | validator unit tests |
+| Call drops mid-registration | Nothing is saved until confirmation; the call log is marked `abandoned` for follow-up on the dashboard | `test_call_with_no_patient_is_marked_abandoned` |
+| DB write fails, is slow, or the DB is down | `SAVE_FAILED` is spoken ("front desk will follow up"), never a 5xx or silence; 8 s tool timeout, 5 s statement timeout | `test_resilience.py` |
+| Caller wants to start over | Sarah confirms once, then discards everything and restarts | manual (test-call script) |
+| Corrections ("D-A-V-I-S, not D-A-V-I-E-S") | Read-back invites corrections; names are confirmed letter by letter | manual |
+| Interruptions, out-of-order answers | Barge-in enabled; volunteered info is accepted and not asked again | manual |
+| Duplicate caller (same phone) | Offers to update; DOB must match before any change (`IDENTITY_MISMATCH` otherwise) | `test_update_patient_identity_mismatch` |
+| Vapi retries a tool call | `source_call_id` makes create/book idempotent (`ALREADY_SAVED`) | `test_create_patient_then_retry_same_call_id_is_idempotent` |
+| Duplicate or malformed end-of-call report | Idempotent upsert; malformed payloads return 200 and are logged | `test_call_logs.py` |
+| Two callers book the same slot | Partial unique index: exactly one wins, the other hears `SLOT_TAKEN` | `test_concurrent_booking_of_same_slot_exactly_one_wins` |
+
+## Bonus features
+
+| Bonus | How to try it |
+|---|---|
+| Duplicate detection → update | Call twice from the same number |
+| Appointment scheduling (mock) | Say yes to the offer after registering ([ADR 0008](docs/adr/0008-mock-appointment-scheduling.md)) |
+| Transcript and summary linked to patient | Dashboard patient page, or `GET /patients/{id}/calls` ([ADR 0007](docs/adr/0007-call-logs-and-transcripts.md)) |
+| Dashboard | `/dashboard`: patients, search, per-patient calls and appointments, a follow-up queue of failed/abandoned calls ([ADR 0009](docs/adr/0009-server-rendered-dashboard.md)) |
+| Automated API tests | `uv run pytest` (see Testing) |
+| Multi-language (Spanish) | **Currently off.** The chosen English-only transcriber can't hear Spanish. The prompt still supports switching; re-enable with a multilingual transcriber override (ADR 0006) |
+
+## Security and privacy
+
+- **Secrets:** all secrets come from env vars. `.env` has never been committed (checked
+  with gitleaks over the full history). `.env.example` has placeholders only.
+- **Authentication:**
+  - REST uses `X-API-Key`, the webhook uses a shared secret, and the dashboard uses HTTP Basic.
+  - All comparisons are constant-time.
+  - A test enumerates every route and fails if a non-public route answers without auth.
+  - Only `/health*`, `/docs` and `/static` are public, and `/docs` can be switched off
+    with `ENABLE_API_DOCS=false`.
+- **Input limits:**
+  - Server-side validation on every field, with max lengths.
+  - 2 MB request body cap (413).
+  - Per-IP rate limiting on everything except health checks and the Vapi webhook.
+  - Parameterized SQL only.
+- **Response hardening:**
+  - Headers: `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, and HSTS (`ENABLE_HSTS`).
+  - The dashboard adds a strict CSP, `no-store` and `noindex`.
+  - CORS allows only explicit origins.
+- **PII:** logs mask names and phone numbers unless `LOG_PII=true`. API keys and auth
+  headers are never logged.
+- **Data:** fake data only. This is a demo, **not HIPAA-compliant by design**: there's no
+  BAA with Vapi, OpenAI, AssemblyAI, Cartesia or Neon, and no audit log.
+
+## Observability
+
+- JSON logs to stdout, one event per line, each with a `request_id` (and `call_id` for voice).
+- Every request logs method, path, status and `duration_ms`. Bodies are never logged.
+- Every tool call logs name, outcome and duration.
+- A completed registration logs the final collected payload (masked).
+- `GET /health` for liveness; `GET /health/ready` checks the DB.
+- The dashboard's calls page shows every call's outcome, so failures are visible without
+  reading logs.
+
+## Local setup
+
+**Prerequisites:** [uv](https://docs.astral.sh/uv/), Docker, a Neon project (or any
+Postgres), and optionally a Vapi account and [ngrok](https://ngrok.com/) for real calls.
 
 ```bash
-uv sync                 # install runtime + dev dependencies
-cp .env.example .env    # fill in local values
+uv sync                       # Python 3.12 + locked dependencies
+cp .env.example .env          # then fill in values (see below)
+docker compose up -d          # local Postgres on :5544 for integration tests
+uv run alembic upgrade head   # migrate (uses DATABASE_URL_DIRECT)
+uv run python -m scripts.seed # optional: 2 fake patients
 uv run uvicorn app.main:app --reload
 ```
 
-Or via the Makefile: `make install`, `make run`.
+**Environment variables:** the full list is in [`.env.example`](.env.example). The app
+fails fast if a required one is missing.
 
-## Environment variables
+| Name | Required | Description | Example |
+|---|---|---|---|
+| `DATABASE_URL` | yes | Neon **pooled** URL (asyncpg) used by the app | `postgresql+asyncpg://user:pw@ep-x-pooler…/neondb` |
+| `DATABASE_URL_DIRECT` | yes | Neon **direct** URL, used by Alembic only | `postgresql+asyncpg://user:pw@ep-x…/neondb` |
+| `API_KEY` | yes | REST API key (`X-API-Key`) | random 32+ chars |
+| `VAPI_WEBHOOK_SECRET` | yes | Shared secret Vapi sends as `X-Vapi-Secret` | random 32+ chars |
+| `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` | yes | Dashboard HTTP Basic credentials | `admin` / random |
+| `DB_SSL_REQUIRE` | no | `true` for Neon, `false` for local Docker | `true` |
+| `TEST_DATABASE_URL` | tests | Local Postgres for integration tests | `…@localhost:5544/voiceai_test` |
+| `APP_ENV`, `LOG_LEVEL`, `LOG_PII` | no | Environment name, log level, unmasked-PII switch | `dev`, `INFO`, `false` |
+| `CORS_ORIGINS`, `RATE_LIMIT_DEFAULT` | no | Allowed origins; per-IP limit | `http://localhost:3000`, `60/minute` |
+| `ENABLE_API_DOCS`, `ENABLE_HSTS`, `MAX_REQUEST_BODY_BYTES` | no | Hardening toggles | `true`, `false`, `2000000` |
+| `DB_POOL_SIZE`, `DB_MAX_OVERFLOW` | no | Connection pool | `5`, `10` |
+| `VAPI_TOOL_TIMEOUT_SECONDS`, `VAPI_WEBHOOK_DB_STATEMENT_TIMEOUT_MS` | no | Keep live calls from hanging | `8.0`, `5000` |
+| `CLINIC_TIMEZONE` | no | Mock scheduling timezone | `America/New_York` |
+| `VAPI_API_KEY`, `PUBLIC_BASE_URL`, `VAPI_PHONE_NUMBER_ID` | sync only | Needed only for `make sync-vapi` | Vapi **private** key; webhook host URL |
+| `VAPI_TRANSCRIBER_OVERRIDE` / `_MODEL_` / `_VOICE_` | no | JSON voice-stack rollback (ADR 0006) | `{"model":"gpt-4o-mini"}` |
 
-See [`.env.example`](.env.example) for the full list with placeholder values. Required
-at startup: `API_KEY`, `VAPI_WEBHOOK_SECRET`, `DASHBOARD_USERNAME`, `DASHBOARD_PASSWORD`,
-`DATABASE_URL`, `DATABASE_URL_DIRECT`. The app fails fast with a clear error if any
-required setting is missing.
+**Make targets** (each wraps a `uv run …` command, so you can run those directly if
+`make` isn't installed):
 
-`TEST_DATABASE_URL` and `DB_SSL_REQUIRE=false` are only used by integration tests — they
-point at the local Docker Compose Postgres (`db-up`), not Neon (which always needs SSL).
-This machine's local Postgres services already occupy ports 5432-5434, so
-`docker-compose.yml` publishes on **5544**.
+| Target | Runs |
+|---|---|
+| `make run` | `uv run uvicorn app.main:app --reload` |
+| `make check` | ruff check + ruff format --check + mypy + pytest |
+| `make db-up` / `make db-down` | `docker compose up -d` / `down` |
+| `make migrate` / `make seed` | `uv run alembic upgrade head` / `uv run python -m scripts.seed` |
+| `make sync-vapi` / `make sync-vapi-dry-run` | `uv run python -m scripts.sync_vapi [--dry-run]` |
 
-`VAPI_TOOL_TIMEOUT_SECONDS` (default 8) and `VAPI_WEBHOOK_DB_STATEMENT_TIMEOUT_MS`
-(default 5000) bound how long a voice tool call / its DB query may take, so a slow
-backend never hangs a live call.
+**Real calls against your local server:**
+```bash
+uv run uvicorn app.main:app --reload                 # terminal 1
+ngrok http --domain=<your-ngrok-domain> 8000         # terminal 2
+```
+Set `PUBLIC_BASE_URL=https://<your-ngrok-domain>` in `.env`, run
+`uv run python -m scripts.sync_vapi`, then call the number (or use **Talk to Assistant**
+in the Vapi dashboard).
 
-`PUBLIC_BASE_URL` and `VAPI_PHONE_NUMBER_ID` are only needed to run `make sync-vapi` —
-`PUBLIC_BASE_URL` is wherever the webhook is actually reachable (an ngrok tunnel in dev).
+**Docker and deployment:** `docker build -t voiceai .` and
+`docker run --env-file .env -p 8000:8000 voiceai`. For the release step (migrations), the
+per-environment variables, the deploy checklist and rollback, see
+[`docs/deployment.md`](docs/deployment.md).
 
-## Database: migrations and seeding
+## Testing
 
 ```bash
-make db-up        # start local Postgres (Docker Compose), for integration tests
-make migrate       # uv run alembic upgrade head — applies migrations (uses DATABASE_URL_DIRECT)
-make migration m="add_x"   # uv run alembic revision --autogenerate -m "add_x"
-make seed          # insert 2 fake patients (idempotent; refuses on APP_ENV=prod without --force)
-make db-down       # stop local Postgres
+docker compose up -d      # integration tests need the local Postgres
+uv run ruff check . && uv run ruff format --check . && uv run mypy app
+uv run pytest --cov=app
 ```
 
-Migrations always run against `DATABASE_URL_DIRECT` (Neon's non-pooled endpoint), never
-the pooled app URL — see `migrations/env.py`.
+- **294 tests.** Unit tests cover validators, config and pure logic. Integration tests run
+  against real Postgres with migrations applied and cover every endpoint (happy path,
+  validation, not-found, auth), the voice tools with recorded-shape Vapi payloads,
+  security and resilience.
+- **Coverage on `app/`: 90%.**
+- **Known issue:** `test_logs_mask_pii_and_never_contain_secrets` fails when the full suite
+  runs, but passes alone. It's a test-isolation problem: an earlier test leaves logging
+  configured differently.
+- **Conversation behavior** is verified manually with
+  [`docs/test-call-script.md`](docs/test-call-script.md). There is no automated text eval
+  harness: Vapi's Chat API requires a card on the account (it returns 402 on free credits).
 
-## API: `/patients`
+## Limitations
 
-All endpoints require `X-API-Key: $API_KEY` and return the envelope
-`{"data": ..., "error": ...}`. Swagger UI (`/docs`) has an "Authorize" button wired to
-the same key.
-
-```bash
-# Create
-curl -s -X POST "$API_BASE/patients" -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" -d '{
-  "first_name": "Jane", "last_name": "Doe", "date_of_birth": "06/15/1985", "sex": "Female",
-  "phone_number": "(212) 555-0100", "address_line_1": "123 Main St", "city": "Springfield",
-  "state": "IL", "zip_code": "62704"
-}'
-
-# List, with filters + pagination
-curl -s "$API_BASE/patients?last_name=doe&limit=10&offset=0" -H "X-API-Key: $API_KEY"
-
-# Get by id
-curl -s "$API_BASE/patients/<patient_id>" -H "X-API-Key: $API_KEY"
-
-# Partial update
-curl -s -X PUT "$API_BASE/patients/<patient_id>" -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" -d '{"city": "Chicago"}'
-
-# Soft delete
-curl -s -X DELETE "$API_BASE/patients/<patient_id>" -H "X-API-Key: $API_KEY"
-```
-
-### Scheduling, call history, providers (read-only)
-
-```bash
-curl -s "$API_BASE/patients/<patient_id>/appointments" -H "X-API-Key: $API_KEY"
-curl -s "$API_BASE/patients/<patient_id>/calls" -H "X-API-Key: $API_KEY"   # includes transcripts
-curl -s "$API_BASE/providers" -H "X-API-Key: $API_KEY"
-```
-
-## Dashboard
-
-`/dashboard` (patients, stats, search by last name, phone or DOB), `/dashboard/patients/{id}`
-(full record, appointments, call history with transcripts), `/dashboard/calls`
-(all calls, with abandoned/failed ones marked as a follow-up queue). Server-rendered,
-no JavaScript. HTTP Basic auth, strict CSP, `no-store`, `noindex`.
-
-```bash
-curl -s -o /dev/null -w "%{http_code}
-" "$API_BASE/dashboard"                                  # 401
-curl -s -u "$DASHBOARD_USERNAME:$DASHBOARD_PASSWORD" "$API_BASE/dashboard" | head   # HTML
-```
-
-## Vapi webhook
-
-`POST /vapi/webhook` — auth via `X-Vapi-Secret: $VAPI_WEBHOOK_SECRET` or
-`Authorization: Bearer $VAPI_WEBHOOK_SECRET`. Handles Vapi's `tool-calls` server
-messages; see [`docs/voice-tools.md`](docs/voice-tools.md) for each tool's contract and
-[`docs/adr/0005-webhook-auth-and-idempotency.md`](docs/adr/0005-webhook-auth-and-idempotency.md)
-for the auth/idempotency design. Tool JSON schemas: `vapi/tools/*.json` (not yet pushed
-to a live Vapi assistant — that's a later batch).
-
-```bash
-curl -s -X POST "$API_BASE/vapi/webhook" -H "X-Vapi-Secret: $VAPI_WEBHOOK_SECRET" -H "Content-Type: application/json" -d '{
-  "message": {"type": "tool-calls", "call": {"id": "demo-call-1"},
-    "toolCallList": [{"id": "tc1", "function": {"name": "find_patient_by_phone", "arguments": {"phone_number": "2125550100"}}}]}
-}'
-```
-
-## Voice agent
-
-"Sarah" — see [`docs/prompt-engineering.md`](docs/prompt-engineering.md) for the design
-rationale and [`docs/voice-tools.md`](docs/voice-tools.md) for the tool contract.
-Config lives entirely as code under `vapi/`:
-
-- `vapi/prompts/system_prompt.md` — the system prompt, annotated with HTML comments
-  (stripped before upload).
-- `vapi/assistant.json` — model/voice/transcriber/turn-taking/server config, with
-  `$PUBLIC_BASE_URL` / `$VAPI_WEBHOOK_SECRET` placeholders and `$SYSTEM_PROMPT` /
-  `$TOOL_IDS` sentinels resolved by the sync script.
-- `vapi/tools/*.json` — 6 tool schemas (registration + scheduling), plus Vapi's built-in
-  `endCall`.
-
-Model/voice/transcriber choices and every Vapi field name are justified and
-doc-URL-cited in
-[`docs/adr/0006-voice-platform-and-model.md`](docs/adr/0006-voice-platform-and-model.md).
-
-### Syncing to Vapi
-
-```bash
-make sync-vapi-dry-run   # print the resolved payload (secrets redacted) + diff, no API calls that mutate
-make sync-vapi           # idempotent upsert: tools -> assistant -> phone number assignment
-```
-
-Safe to run repeatedly — matches existing tools by name/type and the assistant by name,
-updating in place rather than creating duplicates. Writes `vapi/.sync-state.json`
-(gitignored) with the resulting IDs.
-
-### Testing via a call
-
-Two terminals:
-
-```bash
-# Terminal 1
-make run
-
-# Terminal 2 — tunnel so Vapi can reach the local webhook
-ngrok http --url=<your-ngrok-domain> 8000
-```
-
-Set `PUBLIC_BASE_URL` in `.env` to that ngrok domain, `make sync-vapi`, then in the Vapi
-dashboard open the assistant and click **Talk to Assistant** for a free web call (or dial
-the assigned phone number). Work through
-[`docs/test-call-script.md`](docs/test-call-script.md) for specific scenarios. After each
-call, check **Call Logs** in Vapi for the transcript/tool calls, and `GET /patients` to
-confirm what was actually saved.
-
-## How to test
-
-```bash
-make check   # ruff check, ruff format --check, mypy, pytest
-```
-
-Integration tests need the local Postgres running (`make db-up`); they apply migrations
-automatically at the start of the test session and roll back (or truncate) between tests.
-
-## Known limitations / trade-offs
-
-- Scheduling is mock: Mon–Fri 9–5 ET, 30-min slots, no provider calendars, holidays, or
-  cancel/reschedule by voice. A booking is one appointment per call.
-- Dashboard is read-only with a single shared Basic-auth login: no per-user accounts,
-  logout, or lockout.
-- `call_logs.language` isn't populated, because Vapi's end-of-call report doesn't include
-  the detected language.
-- Soft-deleted patients have no retention/purge job.
-- `source_call_id` idempotency covers retries within one call, not a caller who hangs
-  up and calls back. `find_patient_by_phone` catches that case conversationally.
-- Assistant-level silence auto-hangup and backchanneling don't exist in Vapi's current
-  API (ADR 0006), so silence is handled in the prompt.
-- Automated conversation testing via Vapi's Chat API needs a card on the Vapi account,
-  which returns `402` on free credits. Conversation behavior is covered by the manual
-  [test-call script](docs/test-call-script.md).
+- **Speech recognition:** heavy accents, background noise, and spelled-out names or
+  emails can still be misheard. The read-back catches most of it, but not all.
+- **English only:** the current transcriber can't hear Spanish (see Bonus features).
+- **Voice accent:** the chosen Cartesia voice is Hindi-accented. Warm US-English
+  alternatives are listed in ADR 0006.
+- **Mock scheduling:** Mon–Fri 9–5 ET, 30-minute slots, three fake providers, no
+  holidays, and no cancel or reschedule.
+- **Free-tier limits:** Vapi credits and Neon free tier. The webhook currently runs through
+  an ngrok tunnel on a dev machine until the app is deployed.
+- **Dashboard auth:** a single shared HTTP Basic login. No per-user accounts, logout or lockout.
+- **Scaling:** single region, single worker. Rate-limit counters are in memory (per process).
+- **Compliance:** not HIPAA-compliant (no BAAs, no audit log, no retention or purge of
+  soft-deleted rows).
+- **Retry idempotency** covers retries within one call. A caller who hangs up and calls
+  back is handled conversationally by the duplicate check instead.
 
 ## Next steps
 
-- Automated multi-turn conversation evals (Vapi Chat API once billing is enabled, or a
-  local OpenAI-driven harness against the same prompt and tools).
-- Cancel/reschedule tools; real provider schedules.
-- Per-user dashboard auth (SSO) and an audit log of who viewed which record.
-- Deploy behind a stable domain instead of an ngrok tunnel.
+- Deploy the Docker image ([`docs/deployment.md`](docs/deployment.md)) and point Vapi at
+  the stable URL.
+- Fix the test-isolation issue above, so CI is green.
+- Automated multi-turn conversation evals (Vapi Chat API with billing enabled, or a local
+  LLM-driven harness using the same prompt and tools).
+- Bring Spanish back with a multilingual transcriber; consider a US-accented voice.
+- Cancel/reschedule tools and real provider calendars.
+- Per-user dashboard auth (SSO) and an access audit log. Move rate limiting to Redis for
+  multi-worker deploys.

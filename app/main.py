@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -30,10 +31,21 @@ logger = logging.getLogger(__name__)
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
+# Vercel allows at most 500 ms of cleanup after SIGTERM; stay well inside it.
+_SHUTDOWN_TIMEOUT_SECONDS = 0.4
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+    """No startup work (nothing touches the network or disk at import/startup, so cold
+    starts stay fast and the read-only serverless filesystem is never written). On
+    shutdown, close pooled DB connections — bounded, because the platform kills the
+    process after its cleanup window anyway."""
     yield
-    await dispose_engine()
+    try:
+        await asyncio.wait_for(dispose_engine(), timeout=_SHUTDOWN_TIMEOUT_SECONDS)
+    except Exception:
+        logger.warning("engine dispose did not complete cleanly during shutdown")
 
 
 def create_app() -> FastAPI:
@@ -60,7 +72,11 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Content-Type", "X-API-Key", "X-Request-ID"],
     )
-    app.add_middleware(RateLimitMiddleware, limit=settings.RATE_LIMIT_DEFAULT)
+    app.add_middleware(
+        RateLimitMiddleware,
+        limit=settings.RATE_LIMIT_DEFAULT,
+        client_ip_header=settings.RATE_LIMIT_CLIENT_IP_HEADER,
+    )
     app.add_middleware(SecurityHeadersMiddleware, hsts=settings.ENABLE_HSTS)
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(RequestIdMiddleware)

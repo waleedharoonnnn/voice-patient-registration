@@ -32,11 +32,28 @@ EXEMPT_PATH_PREFIXES: tuple[str, ...] = ("/health", "/vapi/webhook", "/static/")
 
 
 class RateLimitMiddleware:
-    """Reject over-limit requests with an enveloped 429 and a Retry-After header."""
+    """Reject over-limit requests with an enveloped 429 and a Retry-After header.
 
-    def __init__(self, app: ASGIApp, *, limit: str) -> None:
+    Counters live in process memory. On serverless (Vercel) every function instance has
+    its own counters, so the limit is per instance, not global: it still stops a burst
+    hitting one warm instance, but traffic spread across instances can exceed it. A
+    shared store (Redis / Upstash via `limits`' storage URI) makes it global.
+    """
+
+    def __init__(self, app: ASGIApp, *, limit: str, client_ip_header: str | None = None) -> None:
         self.app = app
         self.limit = parse(limit)
+        self.client_ip_header = client_ip_header
+
+    def _client_key(self, request: Request) -> str:
+        """The trusted proxy's client-IP header when configured, else the TCP peer."""
+        if self.client_ip_header:
+            forwarded = request.headers.get(self.client_ip_header, "")
+            # x-forwarded-for may be a list; the first entry is the original client.
+            first = forwarded.split(",")[0].strip()
+            if first:
+                return first
+        return get_remote_address(request)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         path: str = scope.get("path", "")
@@ -44,7 +61,7 @@ class RateLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
-        key = get_remote_address(Request(scope))
+        key = self._client_key(Request(scope))
         if limiter.limiter.hit(self.limit, key):
             await self.app(scope, receive, send)
             return

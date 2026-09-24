@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     # of running `pytest tests/integration`.
     TEST_DATABASE_URL: str | None = None
 
+    # `queue`: a long-lived process keeps a connection pool (local dev, Docker).
+    # `null`: serverless (Vercel) — open one connection per checkout and close it after, so
+    # nothing is held open between invocations; Neon's pooler (PgBouncer) does the pooling.
+    DB_POOL_MODE: Literal["queue", "null"] = "queue"
+    # Only used when DB_POOL_MODE=queue.
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10
     # Neon always requires SSL. The local Docker Postgres used by integration tests does
@@ -54,6 +59,11 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: Annotated[list[str], NoDecode] = Field(default_factory=list)
     RATE_LIMIT_DEFAULT: str = "60/minute"
+    # Request header holding the real client IP, set ONLY behind a proxy that overwrites
+    # it on every request (Vercel does for `x-real-ip`/`x-forwarded-for`, so it can't be
+    # spoofed). Unset = use the TCP peer address. Setting this anywhere else would let
+    # clients pick their own rate-limit key.
+    RATE_LIMIT_CLIENT_IP_HEADER: str | None = None
 
     # Swagger UI / ReDoc / openapi.json. Handy for reviewers; set false to hide the API
     # surface in production.

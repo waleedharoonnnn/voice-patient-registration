@@ -18,15 +18,27 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import NullPool
 
 from app.core.config import get_settings
 
 
 def create_engine() -> AsyncEngine:
+    """Build the engine for the configured pool mode (see `Settings.DB_POOL_MODE`).
+
+    `null` uses NullPool for serverless: each session opens a fresh connection to Neon's
+    pooler and closes it on release, so a frozen or recycled function instance never holds
+    a stale connection. `queue` keeps SQLAlchemy's default pool for long-lived processes.
+    """
     settings = get_settings()
     connect_args: dict[str, object] = {"statement_cache_size": 0}
     if settings.DB_SSL_REQUIRE:
         connect_args["ssl"] = "require"
+    if settings.DB_POOL_MODE == "null":
+        # pool_pre_ping is pointless here: every connection is brand new.
+        return create_async_engine(
+            settings.DATABASE_URL, poolclass=NullPool, connect_args=connect_args
+        )
     return create_async_engine(
         settings.DATABASE_URL,
         pool_pre_ping=True,

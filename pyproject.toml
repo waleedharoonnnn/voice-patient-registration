@@ -37,6 +37,12 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
+# Vercel: serve /static through the function, not the CDN, so the security-headers,
+# request-id and access-log middleware still apply to it. (Vercel already keeps mounts in
+# the function when top-level middleware exists; this makes that explicit.)
+[tool.vercel.fastapi.static]
+cdn = false
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

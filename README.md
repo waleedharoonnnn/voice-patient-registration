@@ -13,9 +13,10 @@ through a REST API and a read-only staff dashboard, backed by Neon Postgres.
 | What | Where |
 |---|---|
 | Phone number | **+1 (732) 782-5438** |
-| API base URL | `<TBD after deployment>` (Vercel, `https://<project>.vercel.app`) |
-| API docs (Swagger) | `<API base URL>/docs` |
-| Dashboard | `<API base URL>/dashboard` (HTTP Basic) |
+| API base URL | https://voice-patient-registration-zeta.vercel.app (Vercel, `iad1`) |
+| API docs (Swagger) | https://voice-patient-registration-zeta.vercel.app/docs |
+| Dashboard | https://voice-patient-registration-zeta.vercel.app/dashboard (HTTP Basic) |
+| Health | [`/health`](https://voice-patient-registration-zeta.vercel.app/health) · [`/health/ready`](https://voice-patient-registration-zeta.vercel.app/health/ready) (checks the DB) |
 | Credentials | Sent separately. Never committed. |
 | Requirement → code → test map | [`docs/requirements-traceability.md`](docs/requirements-traceability.md) |
 | Test-call scenarios | [`docs/test-call-script.md`](docs/test-call-script.md) |
@@ -24,8 +25,10 @@ through a REST API and a read-only staff dashboard, backed by Neon Postgres.
 
 1. **Call** +1 (732) 782-5438 and register as a new patient, using obviously fake details.
    Try correcting a field during the read-back. Afterwards, accept the appointment offer.
-2. **Check the API.** Set `API_BASE` and `API_KEY` from the credentials email, then:
+2. **Check the API.** Set `API_KEY` from the credentials email, then:
    ```bash
+   API_BASE=https://voice-patient-registration-zeta.vercel.app
+
    # Search by the phone number you gave on the call
    curl -s "$API_BASE/patients?phone_number=2125550100" -H "X-API-Key: $API_KEY"
 
@@ -279,11 +282,33 @@ Set `PUBLIC_BASE_URL=https://<your-ngrok-domain>` in `.env`, run
 `uv run python -m scripts.sync_vapi`, then call the number (or use **Talk to Assistant**
 in the Vapi dashboard).
 
-**Deployment:** Vercel is the target. `vercel.json` and `[tool.vercel]` in
-`pyproject.toml` hold the config. See [`docs/deployment.md`](docs/deployment.md) for the
-production env vars, migrate-first steps, repointing Vapi and rollback. A container host
-works too: `docker build -t voiceai .` and
-`docker run --env-file .env -p 8000:8000 voiceai`.
+## Deployment
+
+Live on **Vercel Hobby** as one serverless function in `iad1` (Washington, D.C., close to
+Neon us-east and Vapi). Every push to `main` redeploys. See
+[ADR 0010](docs/adr/0010-vercel-serverless-deployment.md) for why, and
+[`docs/deployment.md`](docs/deployment.md) for the full checklist and rollback.
+
+- **Config:**
+  - `vercel.json`: region, `maxDuration: 30`, and tests/docs/scripts/migrations excluded
+    from the bundle.
+  - `pyproject.toml`: `[tool.vercel.fastapi.static] cdn = false`, so `/static` keeps the
+    security headers.
+  - Vercel auto-detects `app` in `app/main.py` and installs from `uv.lock`.
+- **Serverless settings:** `DB_POOL_MODE=null` (one DB connection per request through
+  Neon's pooler, nothing held between invocations) and `RATE_LIMIT_CLIENT_IP_HEADER=x-real-ip`.
+- **Production env vars (names only):** `APP_ENV`, `DATABASE_URL`, `DATABASE_URL_DIRECT`,
+  `DB_POOL_MODE`, `RATE_LIMIT_CLIENT_IP_HEADER`, `ENABLE_HSTS`, `API_KEY`,
+  `VAPI_WEBHOOK_SECRET`, `DASHBOARD_USERNAME`, `DASHBOARD_PASSWORD`.
+- **Release steps:**
+  1. Migrations run from a checkout, not on Vercel:
+     `uv run alembic upgrade head` against the prod `DATABASE_URL_DIRECT`.
+  2. Deploy by pushing to `main`.
+  3. If the URL or secret changed, set `PUBLIC_BASE_URL` to the Vercel URL locally and
+     run `make sync-vapi` to repoint the phone agent.
+- **Rollback:** Vercel → Deployments → promote the previous deployment.
+- **Container alternative:** `docker build -t voiceai .` and
+  `docker run --env-file .env -p 8000:8000 voiceai`.
 
 ## Testing
 
@@ -311,8 +336,8 @@ uv run pytest --cov=app
   alternatives are listed in ADR 0006.
 - **Mock scheduling:** Mon–Fri 9–5 ET, 30-minute slots, three fake providers, no
   holidays, and no cancel or reschedule.
-- **Free-tier limits:** Vapi credits, Neon free tier and Vercel Hobby. Until the first
-  Vercel deploy, the webhook runs through an ngrok tunnel on a dev machine.
+- **Free-tier limits:** Vapi credits, Neon free tier and Vercel Hobby. Cold starts
+  can add latency to the first request after the function has been idle.
 - **Dashboard auth:** a single shared HTTP Basic login. No per-user accounts, logout or lockout.
 - **Scaling:** single region (`iad1`). Rate-limit counters are in memory, so on Vercel the
   limit applies per function instance, not globally. It still stops bursts; a Redis store
@@ -324,8 +349,7 @@ uv run pytest --cov=app
 
 ## Next steps
 
-- Deploy to Vercel ([`docs/deployment.md`](docs/deployment.md)) and point Vapi at the
-  stable URL.
+- A custom domain in front of the Vercel URL, and a CI job that runs migrations before promotion.
 - Automated multi-turn conversation evals (Vapi Chat API with billing enabled, or a local
   LLM-driven harness using the same prompt and tools).
 - Bring Spanish back with a multilingual transcriber; consider a US-accented voice.

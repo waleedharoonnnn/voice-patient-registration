@@ -7,7 +7,8 @@ passed via `connect_args` (asyncpg does not understand a `sslmode` URL parameter
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import asynccontextmanager
 from functools import lru_cache
 
 from sqlalchemy import text
@@ -57,20 +58,25 @@ async def get_db() -> AsyncGenerator[AsyncSession]:
             raise
 
 
-async def get_webhook_db() -> AsyncGenerator[AsyncSession]:
-    """Like `get_db`, but caps statement duration so a slow query can't hang a live call.
+@asynccontextmanager
+async def webhook_session() -> AsyncIterator[AsyncSession]:
+    """A session for one Vapi webhook request: commit on success, roll back on error.
 
-    `SET LOCAL` scopes the timeout to this transaction only; it never leaks to other
-    sessions on the (pooled) connection.
+    Unlike `get_db`, this is a context manager the webhook route opens *itself* (not a
+    FastAPI dependency), so a database that's down at connect or commit time surfaces as
+    an exception the route can turn into a spoken SAVE_FAILED result — never a 500 that
+    leaves the caller in silence.
+
+    Also caps statement duration so a slow query can't hang a live call. `is_local=true`
+    scopes the timeout to this transaction; it never leaks to other sessions on the
+    pooled connection.
     """
     settings = get_settings()
-    session_factory = get_session_factory()
-    async with session_factory() as session:
+    async with get_session_factory()() as session:
         try:
             await session.execute(
-                text(
-                    f"SET LOCAL statement_timeout = {settings.VAPI_WEBHOOK_DB_STATEMENT_TIMEOUT_MS}"
-                )
+                text("SELECT set_config('statement_timeout', :ms, true)"),
+                {"ms": str(settings.VAPI_WEBHOOK_DB_STATEMENT_TIMEOUT_MS)},
             )
             yield session
             await session.commit()

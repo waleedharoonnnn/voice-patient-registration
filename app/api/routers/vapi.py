@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.errors import UnauthorizedError
 from app.core.logging import call_id_var
-from app.db.session import get_webhook_db
+from app.db.session import webhook_session
 from app.repositories.appointment_repository import AppointmentRepository
 from app.repositories.call_log_repository import CallLogRepository
 from app.repositories.patient_repository import PatientRepository
@@ -115,27 +115,25 @@ def _parse_iso(value: str | None) -> datetime | None:
         return None
 
 
-async def _handle_end_of_call_report(message: VapiMessage, ctx: ToolContext) -> None:
-    """Never raises: a failure here is logged, and Vapi still gets a 200."""
+async def _handle_end_of_call_report(message: VapiMessage, call_id: str) -> None:
+    """Never raises: a failure here is logged with the call id, and Vapi still gets 200."""
     try:
-        await ctx.call_log_service.record_end_of_call_report(
-            ctx.call_id,
-            ended_reason=message.endedReason,
-            started_at=_parse_iso(message.startedAt),
-            ended_at=_parse_iso(message.endedAt),
-            summary=message.analysis.summary if message.analysis else None,
-            transcript=message.artifact.transcript if message.artifact else None,
-            recording_url=message.artifact.recordingUrl if message.artifact else None,
-        )
+        async with webhook_session() as db:
+            await _build_context(db, call_id).call_log_service.record_end_of_call_report(
+                call_id,
+                ended_reason=message.endedReason,
+                started_at=_parse_iso(message.startedAt),
+                ended_at=_parse_iso(message.endedAt),
+                summary=message.analysis.summary if message.analysis else None,
+                transcript=message.artifact.transcript if message.artifact else None,
+                recording_url=message.artifact.recordingUrl if message.artifact else None,
+            )
     except Exception:
-        logger.exception("end-of-call-report handling failed", extra={"call_id": ctx.call_id})
+        logger.exception("end-of-call-report handling failed", extra={"call_id": call_id})
 
 
 @router.post("/webhook", dependencies=[Depends(require_vapi_secret)])
-async def vapi_webhook(
-    raw_body: dict[str, Any],
-    db: Annotated[AsyncSession, Depends(get_webhook_db)],
-) -> dict[str, Any]:
+async def vapi_webhook(raw_body: dict[str, Any]) -> dict[str, Any]:
     try:
         payload = VapiWebhookPayload.model_validate(raw_body)
     except ValidationError:
@@ -146,19 +144,32 @@ async def vapi_webhook(
     call_id = message.call.id if message.call else "unknown"
     token = call_id_var.set(call_id)
     try:
-        ctx = _build_context(db, call_id)
-
         if message.type == "tool-calls":
-            results = [await _dispatch_tool_call(tc, ctx) for tc in message.toolCallList]
-            return {"results": results}
-
+            return await _handle_tool_calls(message, call_id)
         if message.type == "end-of-call-report" and message.call is not None:
-            await _handle_end_of_call_report(message, ctx)
+            await _handle_end_of_call_report(message, call_id)
             return {}
-
         logger.info(
             "vapi message received", extra={"message_type": message.type, "call_id": call_id}
         )
         return {}
     finally:
         call_id_var.reset(token)
+
+
+async def _handle_tool_calls(message: VapiMessage, call_id: str) -> dict[str, Any]:
+    """Dispatch every tool call; if the DB itself is unavailable, answer each one with a
+    speakable SAVE_FAILED instead of letting the request fail."""
+    try:
+        async with webhook_session() as db:
+            ctx = _build_context(db, call_id)
+            results = [await _dispatch_tool_call(tc, ctx) for tc in message.toolCallList]
+    except Exception:
+        # Reached only when the session can't open or commit (DB down, timeout at commit).
+        # Individual handlers already turn their own errors into results.
+        logger.exception("vapi webhook database unavailable", extra={"call_id": call_id})
+        results = [
+            {"toolCallId": tc.id, "result": f"{SAVE_FAILED}: I'm having trouble saving right now."}
+            for tc in message.toolCallList
+        ]
+    return {"results": results}

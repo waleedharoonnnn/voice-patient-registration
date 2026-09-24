@@ -17,7 +17,9 @@ config = context.config
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers=False: when Alembic runs in-process (test fixtures), the
+    # default would silently disable every app logger created before this point.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # The direct (non-pooled) Neon URL, never the app's pooled/PgBouncer URL, and never
 # hardcoded — see CLAUDE.md §8. A caller (e.g. the integration test fixture, to point at

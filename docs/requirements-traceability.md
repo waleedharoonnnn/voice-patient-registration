@@ -62,7 +62,7 @@ Automated conversation evals don't exist (Vapi's Chat API needs a paid plan; see
 | Code quality | Layered architecture, ruff, mypy `--strict` | CI, `make check` | ✅ |
 | README (setup, architecture, stack, env vars, limitations) | `README.md` | Commands run in Batch 8 | ✅ |
 | Security: no hardcoded keys, env vars, input sanitization | `app/core/config.py`, validation, [security-review.md](security-review.md) | gitleaks (history), `test_security.py`, `test_route_auth.py` | ✅ |
-| Log the final collected payload | `patient created` / `patient updated` events (PII masked unless `LOG_PII=true`) and a per-tool-call log | `test_logs_mask_pii_and_never_contain_secrets` (see Open items) | ✅ |
+| Log the final collected payload | `patient created` / `patient updated` events (PII masked unless `LOG_PII=true`) and a per-tool-call log | `test_logs_mask_pii_and_never_contain_secrets` | ✅ |
 
 ## Evaluation: edge cases and resilience
 
@@ -105,9 +105,5 @@ Partial, and not fixable in code:
 3. **Live URLs in the submission.** They depend on (1).
 
 Other open items:
-- **Order-dependent test failure.** `test_security.py::test_logs_mask_pii_and_never_contain_secrets`
-  passes alone and with its own file, but fails in the full suite. An earlier test leaves
-  logging configured differently. The masking itself is verified by the standalone run.
-  CI runs the full suite, so it will likely fail there too until the test is isolated.
 - **No automated conversation eval** (`make eval`). Vapi's Chat API returned 402 (card
   required), so conversational criteria are verified manually.

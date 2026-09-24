@@ -294,9 +294,6 @@ uv run pytest --cov=app
   validation, not-found, auth), the voice tools with recorded-shape Vapi payloads,
   security and resilience.
 - **Coverage on `app/`: 90%.**
-- **Known issue:** `test_logs_mask_pii_and_never_contain_secrets` fails when the full suite
-  runs, but passes alone. It's a test-isolation problem: an earlier test leaves logging
-  configured differently.
 - **Conversation behavior** is verified manually with
   [`docs/test-call-script.md`](docs/test-call-script.md). There is no automated text eval
   harness: Vapi's Chat API requires a card on the account (it returns 402 on free credits).
@@ -323,7 +320,6 @@ uv run pytest --cov=app
 
 - Deploy the Docker image ([`docs/deployment.md`](docs/deployment.md)) and point Vapi at
   the stable URL.
-- Fix the test-isolation issue above, so CI is green.
 - Automated multi-turn conversation evals (Vapi Chat API with billing enabled, or a local
   LLM-driven harness using the same prompt and tools).
 - Bring Spanish back with a multilingual transcriber; consider a US-accented voice.

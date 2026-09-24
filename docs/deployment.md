@@ -1,10 +1,66 @@
 # Deployment
 
-Provider-neutral: any host that runs a container and gives it a `$PORT` works (Render,
-Fly.io, Railway, Cloud Run, a VM). Nothing is deployed yet. Live URLs in the README are
-placeholders until then.
+**Primary target: Vercel (Hobby, serverless).** The reasoning and the facts checked
+against Vercel's docs are in [ADR 0010](adr/0010-vercel-serverless-deployment.md). The
+Docker image (further down) is the portable alternative for any container host. Live
+URLs in the README are placeholders until the first deploy.
 
-## The image
+## Vercel
+
+Config in the repo:
+- **`vercel.json`:** region `iad1`, `maxDuration: 30`, `excludeFiles` for
+  tests/docs/scripts/migrations.
+- **`pyproject.toml`:** `[tool.vercel.fastapi.static] cdn = false`.
+- **Entrypoint:** `app` in `app/main.py`, detected automatically.
+- **Dependencies:** installed from `uv.lock` (no dev group).
+
+### Production environment variables (Vercel → Project → Settings → Environment Variables)
+
+| Name | Value |
+|---|---|
+| `APP_ENV` | `prod` |
+| `DATABASE_URL` | Neon **prod** branch, **pooled** URL, `postgresql+asyncpg://…-pooler…/neondb` (no `sslmode` parameter) |
+| `DATABASE_URL_DIRECT` | Neon prod **direct** URL. Required by settings validation; used only by migrations |
+| `DB_POOL_MODE` | `null` |
+| `RATE_LIMIT_CLIENT_IP_HEADER` | `x-real-ip` |
+| `ENABLE_HSTS` | `true` (Vercel is HTTPS-only) |
+| `API_KEY` | fresh random secret |
+| `VAPI_WEBHOOK_SECRET` | fresh random secret (must match what `sync-vapi` sends) |
+| `DASHBOARD_USERNAME` | non-obvious name |
+| `DASHBOARD_PASSWORD` | fresh random secret |
+
+Everything else has a safe default. That includes `DB_SSL_REQUIRE=true`, `LOG_PII=false`,
+`RATE_LIMIT_DEFAULT=60/minute`, `ENABLE_API_DOCS=true` and `CLINIC_TIMEZONE`. Leave
+`CORS_ORIGINS` unset, because no browser client calls the API cross-origin. Vapi sync
+variables (`VAPI_API_KEY`, `PUBLIC_BASE_URL`, `VAPI_PHONE_NUMBER_ID`) aren't needed by the
+function.
+
+### Deploy steps
+
+1. **Migrate first**, from a checkout. Vercel never runs Alembic.
+   ```bash
+   DATABASE_URL_DIRECT='<neon prod direct url>' uv run alembic upgrade head
+   ```
+2. Import the GitHub repo in Vercel. The framework preset is detected as FastAPI; leave the
+   build command empty. Add the environment variables above, then deploy.
+3. Check: `curl https://<project>.vercel.app/health/ready` → `{"data":{"status":"ready"},…}`.
+4. Point Vapi at it: set `PUBLIC_BASE_URL=https://<project>.vercel.app` and the **prod**
+   `VAPI_WEBHOOK_SECRET` in your local `.env`, then run `make sync-vapi-dry-run` (expect
+   only `server.url` and `server.headers` to differ) followed by `make sync-vapi`.
+5. Smoke test: the dashboard login, one `curl` to `/patients` with the key, and one real call.
+
+### Serverless behavior to know
+
+- **Database:** `NullPool`, so each request opens one connection through Neon's pooler
+  and closes it. No connections are held between invocations.
+- **Rate limiting** is per function instance (in-memory counters). It still stops bursts,
+  but isn't global. Fix: a Redis store such as Upstash (ADR 0010).
+- **Shutdown:** engine disposal is capped at 0.4 s (Vercel allows 500 ms). There's no
+  startup work, and nothing writes to disk.
+- **Rollback:** Vercel → Deployments → pick the previous one → **Promote**. Migrations are
+  additive so far, so older code runs on the newer schema.
+
+## The image (container hosts)
 
 `Dockerfile` is a multi-stage build:
 - `python:3.12-slim` base, with dependencies installed by `uv sync --locked --no-dev` from `uv.lock`.

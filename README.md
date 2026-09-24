@@ -13,7 +13,7 @@ through a REST API and a read-only staff dashboard, backed by Neon Postgres.
 | What | Where |
 |---|---|
 | Phone number | **+1 (732) 782-5438** |
-| API base URL | `<TBD after deployment>` (dev: an ngrok tunnel) |
+| API base URL | `<TBD after deployment>` (Vercel, `https://<project>.vercel.app`) |
 | API docs (Swagger) | `<API base URL>/docs` |
 | Dashboard | `<API base URL>/dashboard` (HTTP Basic) |
 | Credentials | Sent separately. Never committed. |
@@ -95,7 +95,8 @@ migrations/  vapi/ (assistant.json, prompts/, tools/)  scripts/ (seed, sync_vapi
 | API | Python 3.12, FastAPI, Pydantic v2 | Typed validation, async, OpenAPI docs for free ([ADR 0001](docs/adr/0001-tech-stack.md)) |
 | Data | SQLAlchemy 2.0 async + asyncpg, Alembic, Neon Postgres | Real constraints, migrations, serverless Postgres with branches |
 | Voice | Vapi, config as code in `vapi/` | Telephony, STT, LLM and TTS in one platform, versioned in git ([ADR 0006](docs/adr/0006-voice-platform-and-model.md)) |
-| Tooling | uv, ruff, mypy `--strict`, pytest, GitHub Actions, Docker | Reproducible from the lock file; strict types; tests on real Postgres |
+| Tooling | uv, ruff, mypy `--strict`, pytest, GitHub Actions | Reproducible from the lock file; strict types; tests on real Postgres |
+| Hosting | Vercel Hobby (serverless, `iad1`); Dockerfile as the portable alternative | Free HTTPS next to Neon us-east and Vapi ([ADR 0010](docs/adr/0010-vercel-serverless-deployment.md)) |
 
 Voice stack, with Vapi's per-component figures:
 
@@ -250,7 +251,9 @@ fails fast if a required one is missing.
 | `APP_ENV`, `LOG_LEVEL`, `LOG_PII` | no | Environment name, log level, unmasked-PII switch | `dev`, `INFO`, `false` |
 | `CORS_ORIGINS`, `RATE_LIMIT_DEFAULT` | no | Allowed origins; per-IP limit | `http://localhost:3000`, `60/minute` |
 | `ENABLE_API_DOCS`, `ENABLE_HSTS`, `MAX_REQUEST_BODY_BYTES` | no | Hardening toggles | `true`, `false`, `2000000` |
-| `DB_POOL_SIZE`, `DB_MAX_OVERFLOW` | no | Connection pool | `5`, `10` |
+| `DB_POOL_MODE` | no | `queue` (local/Docker) or `null` (Vercel: NullPool, no connections held between invocations) | `queue` |
+| `DB_POOL_SIZE`, `DB_MAX_OVERFLOW` | no | Connection pool (queue mode only) | `5`, `10` |
+| `RATE_LIMIT_CLIENT_IP_HEADER` | no | Client-IP header, only behind a proxy that overwrites it | `x-real-ip` on Vercel, unset elsewhere |
 | `VAPI_TOOL_TIMEOUT_SECONDS`, `VAPI_WEBHOOK_DB_STATEMENT_TIMEOUT_MS` | no | Keep live calls from hanging | `8.0`, `5000` |
 | `CLINIC_TIMEZONE` | no | Mock scheduling timezone | `America/New_York` |
 | `VAPI_API_KEY`, `PUBLIC_BASE_URL`, `VAPI_PHONE_NUMBER_ID` | sync only | Needed only for `make sync-vapi` | Vapi **private** key; webhook host URL |
@@ -276,10 +279,11 @@ Set `PUBLIC_BASE_URL=https://<your-ngrok-domain>` in `.env`, run
 `uv run python -m scripts.sync_vapi`, then call the number (or use **Talk to Assistant**
 in the Vapi dashboard).
 
-**Docker and deployment:** `docker build -t voiceai .` and
-`docker run --env-file .env -p 8000:8000 voiceai`. For the release step (migrations), the
-per-environment variables, the deploy checklist and rollback, see
-[`docs/deployment.md`](docs/deployment.md).
+**Deployment:** Vercel is the target. `vercel.json` and `[tool.vercel]` in
+`pyproject.toml` hold the config. See [`docs/deployment.md`](docs/deployment.md) for the
+production env vars, migrate-first steps, repointing Vapi and rollback. A container host
+works too: `docker build -t voiceai .` and
+`docker run --env-file .env -p 8000:8000 voiceai`.
 
 ## Testing
 
@@ -307,10 +311,12 @@ uv run pytest --cov=app
   alternatives are listed in ADR 0006.
 - **Mock scheduling:** Mon–Fri 9–5 ET, 30-minute slots, three fake providers, no
   holidays, and no cancel or reschedule.
-- **Free-tier limits:** Vapi credits and Neon free tier. The webhook currently runs through
-  an ngrok tunnel on a dev machine until the app is deployed.
+- **Free-tier limits:** Vapi credits, Neon free tier and Vercel Hobby. Until the first
+  Vercel deploy, the webhook runs through an ngrok tunnel on a dev machine.
 - **Dashboard auth:** a single shared HTTP Basic login. No per-user accounts, logout or lockout.
-- **Scaling:** single region, single worker. Rate-limit counters are in memory (per process).
+- **Scaling:** single region (`iad1`). Rate-limit counters are in memory, so on Vercel the
+  limit applies per function instance, not globally. It still stops bursts; a Redis store
+  (e.g. Upstash) would make it global (ADR 0010).
 - **Compliance:** not HIPAA-compliant (no BAAs, no audit log, no retention or purge of
   soft-deleted rows).
 - **Retry idempotency** covers retries within one call. A caller who hangs up and calls
@@ -318,11 +324,11 @@ uv run pytest --cov=app
 
 ## Next steps
 
-- Deploy the Docker image ([`docs/deployment.md`](docs/deployment.md)) and point Vapi at
-  the stable URL.
+- Deploy to Vercel ([`docs/deployment.md`](docs/deployment.md)) and point Vapi at the
+  stable URL.
 - Automated multi-turn conversation evals (Vapi Chat API with billing enabled, or a local
   LLM-driven harness using the same prompt and tools).
 - Bring Spanish back with a multilingual transcriber; consider a US-accented voice.
 - Cancel/reschedule tools and real provider calendars.
-- Per-user dashboard auth (SSO) and an access audit log. Move rate limiting to Redis for
-  multi-worker deploys.
+- Per-user dashboard auth (SSO) and an access audit log. Move rate limiting to Redis
+  (Upstash) so the limit is global across serverless instances.

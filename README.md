@@ -6,7 +6,6 @@ A caller dials a US number and talks to **Sarah**, a voice agent that collects t
 demographics conversationally, validates each field as they go, reads everything back,
 saves the record, and offers a first appointment. A FastAPI service exposes the same data
 through a REST API and a read-only staff dashboard, backed by Neon Postgres.
-. .)
 
 ## Quick links
 

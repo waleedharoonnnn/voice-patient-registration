@@ -96,13 +96,17 @@ name pauses between chunks in a way that default endpointing reads as "done talk
 `stopSpeakingPlan` (`numWords: 2`, `voiceSeconds: 0.3`) allows the caller to interrupt
 quickly without the assistant droning through a whole sentence first.
 
+**Silence never ends the call (revised Batch 8).** The original claim here, that
+assistant-level `silenceTimeoutSeconds` doesn't exist, was **wrong**. The public OpenAPI
+spec only lists it on `TransferAssistant`, but Vapi applies it to assistants with a
+**30 s default**. A live test call ended with `endedReason: silence-timed-out`, and the
+API accepts the field on the assistant. It is now set to `3600` (the maximum), so
+callers can pause to find an insurance card without being hung up on. The prompt also
+says never to end on silence, only on goodbye. `maxDurationSeconds: 900` stays the hard
+cap. The trade-off: a caller who walks away keeps the line open, and the credits billing,
+for up to 15 minutes.
+
 **Not configured — confirmed absent from the current API, not merely skipped:**
-- **Silence-based auto-hangup** (`silenceTimeoutSeconds`/`idleMessages` at the assistant
-  level): searched the full `CreateAssistantDTO` schema — not present. Community threads
-  reference these names, but they don't exist on the assistant resource in the live
-  OpenAPI spec at time of writing. Silence handling is therefore prompt-level only ("gentle
-  check-in once, then end politely" — see `vapi/prompts/system_prompt.md` §4) backed by
-  `maxDurationSeconds: 900` as a hard ceiling and the explicit `endCall` tool (below).
 - **Backchanneling**: no such field exists on `CreateAssistantDTO` or any nested plan in
   the current schema. Not configured; noted here so a future search for it isn't repeated.
 
@@ -137,6 +141,6 @@ still have transcripts available when that batch starts.
   schema (`ToolCallFunction.arguments: string`, not `oneOf<string, object>`), the
   object-vs-string tolerance already built into `app/voice/schemas.py` in Batch 3+4 was
   the right call, not excess defensiveness — confirmed, not changed.
-- If Vapi adds assistant-level silence-hangup back in a future API version, the prompt's
-  "gentle check-in once" behavior and the new config option would need to be reconciled
-  (redundant but not conflicting) rather than one replacing the other outright.
+- Vapi's public OpenAPI spec is incomplete for some assistant fields
+  (`silenceTimeoutSeconds`). A live call's `endedReason` is the ground truth when the
+  spec and behavior disagree.

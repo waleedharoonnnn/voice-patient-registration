@@ -59,6 +59,7 @@
     "backoffSeconds": 1.0
   },
   "maxDurationSeconds": 900,
+  "silenceTimeoutSeconds": 3600,
   "endCallMessage": "Thanks for calling, take care.",
   "endCallPhrases": ["have a great day", "take care", "goodbye"],
   "serverMessages": ["tool-calls", "end-of-call-report", "status-update"],

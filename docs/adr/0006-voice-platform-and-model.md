@@ -18,31 +18,76 @@ Accepted.
 
 ## Decisions
 
-**Model: OpenAI `gpt-4o-mini`, temperature 0.3.** Cost-efficient tier with reliable tool
-calling (function calling is a first-class OpenAI feature, not bolted on). Temperature
-0.3 favors consistent instruction-following (one question at a time, never inventing
-data) over creative variation, which this task has no use for. Confirmed `model` is a
-free-form string on `OpenAIModel` in the live schema — no enum constraint to satisfy.
-**Upgrade path**: if tool-call reliability or multilingual quality is lacking in
-practice, `gpt-4o` is a drop-in `model` value change with no other config touched.
+### Final stack (revised Batch 8)
 
-**Transcriber: Deepgram `nova-3`, `language: "multi"`.** Nova-3 with `language: "multi"`
-is Deepgram's code-switching multilingual model — it transcribes English and Spanish
-(among others) in the same stream without a language pre-selection, which this task
-needs since the caller can switch to Spanish mid-call. `numerals: true` converts spoken
-digits to literal numerals in the transcript (helps the model and `validate_fields`
-parse phone/ZIP more reliably); `smartFormat: true` and a short `keyterm` list (nova-3's
-"Keyterm Prompting" feature) bias recognition toward registration-relevant phrases.
-Confirmed all of these against `DeepgramTranscriber` in the live schema.
+The stack was re-tuned in the Vapi dashboard after live test calls, then copied into
+`vapi/assistant.json` from a `GET /assistant/{id}` so the next sync doesn't revert it.
+Cost and latency are the per-component figures Vapi's dashboard shows:
 
-**Voice: OpenAI `alloy`, model `gpt-4o-mini-tts`.** OpenAI TTS voices are natively
-multilingual — the model matches the language of the input text automatically, so
-switching to Spanish mid-call needs no voice reconfiguration (no per-language `voiceId`
-or `language` field exists on `OpenAIVoice` in the schema — confirmed it isn't needed).
-Chosen over Cartesia/PlayHT because those require a specific provider `voiceId`, and
-guessing one wrong would silently produce a broken or wrong-sounding voice with no way to
-verify without a live call — `alloy`/`gpt-4o-mini-tts` are enum-confirmed, stable values.
-Same "mini" cost tier as the LLM, reasonable quality/cost trade-off on free credits.
+| Component | Choice (exact config values) | Cost | Latency |
+|---|---|---|---|
+| Transcriber | `assembly-ai`, `speechModel: universal-streaming-english`, `language: en` | $0.005/min | ~390 ms |
+| Model | `openai`, `gpt-4.1`, `temperature: 0.3` | $0.025/min | ~690 ms |
+| Voice | `cartesia`, `model: sonic-3.5`, `voiceId: f91ab3e6-5071-4e15-b016-cde6f2bcd222` ("Aadhya - Soother") | $0.022/min | ~270 ms |
+| **Total** | | **$0.052/min** | **~1.35 s** |
+
+The total covers these three components only. Vapi's own platform fee and telephony are
+billed on top.
+
+**Model: OpenAI `gpt-4.1`, temperature 0.3.** Better instruction-following and more
+reliable multi-step tool use than `gpt-4o-mini`. This matters most in the read-back →
+confirm → save → offer-appointment chain, where a missed or out-of-order tool call is the
+costliest failure. Temperature 0.3 keeps the agent on-script (one question at a time,
+never inventing data).
+
+**Transcriber: AssemblyAI Universal-Streaming (English).** It is the cheapest component
+and has good accuracy on names, digits and addresses. Its turn detection (`formatTurns`)
+works with Vapi smart endpointing (`smartEndpointingPlan.provider: vapi`, set in the
+dashboard). Our registration keyterms carry over as AssemblyAI's `keytermsPrompt`
+(Deepgram's equivalent field is `keyterm`).
+
+**Voice: Cartesia Sonic 3.5, "Aadhya - Soother".** Cartesia gives the lowest time to
+first audio of the options tried (~270 ms), which keeps turn-taking feeling natural. Vapi's
+voice library lists this voice as **Hindi (`language: hi`)**, so it speaks English with
+an Indian accent. Kept as chosen; warm US-English Sonic 3.5 alternatives, verified in
+Vapi's Cartesia voice library, are:
+- Iris - Friendly Specialist: `c894559e-d529-4d70-a6fb-3330ecf7ef6b`
+- Jacqueline - Reassuring Agent: `9626c31c-bec5-4cca-baa8-f8ba9e84c8bc`
+- Katie - Friendly Fixer: `f786b574-daa5-4673-aa0c-cbe3e8534c02`
+
+**Rollback without a code change.** `VAPI_TRANSCRIBER_OVERRIDE`, `VAPI_MODEL_OVERRIDE` and
+`VAPI_VOICE_OVERRIDE` (JSON objects) are applied by `scripts/sync_vapi.py`. Transcriber and
+voice are replaced wholesale because their fields differ per provider. Model is merged, so
+the prompt, tools and temperature are kept. For example, to restore the Batch 5 stack:
+```
+VAPI_TRANSCRIBER_OVERRIDE={"provider":"deepgram","model":"nova-3","language":"multi","smartFormat":true,"numerals":true}
+VAPI_MODEL_OVERRIDE={"model":"gpt-4o-mini"}
+VAPI_VOICE_OVERRIDE={"provider":"openai","voiceId":"alloy","model":"gpt-4o-mini-tts"}
+```
+Then run `make sync-vapi`. `--dry-run` prints a field-level diff against the live
+assistant first.
+
+**Rejected alternatives**
+- *Deepgram nova-3 `multi` + OpenAI `gpt-4o-mini` + OpenAI `alloy`* (the Batch 5 stack).
+  It supports mid-call Spanish, but live calls sounded more robotic and handled the
+  multi-step flow less reliably than `gpt-4.1`.
+- *`gpt-4o-mini` with the new transcriber and voice*: cheaper, but tool-chain reliability
+  is what matters most here.
+- *AssemblyAI `universal-streaming-multilingual`*: would keep Spanish, but was not the
+  choice made. It is the first thing to try if Spanish support comes back.
+- *A separate Spanish assistant*: out of scope for now.
+
+**Trade-off: mid-call Spanish is no longer supported.** The English-only transcriber
+cannot transcribe Spanish, so the prompt's language-switch behavior will not work
+reliably. See README "Known limitations".
+
+### Original Batch 5 choices (superseded, kept for history)
+
+Deepgram `nova-3` with `language: multi` (code-switching English/Spanish), `numerals`,
+`smartFormat` and `keyterm` prompting; OpenAI `gpt-4o-mini` at temperature 0.3; OpenAI
+`alloy` voice on `gpt-4o-mini-tts`. That voice was chosen then because it is enum-confirmed
+and natively multilingual, and no provider `voiceId` could be verified without a live
+call.
 
 **Turn-taking, tuned for spelling and digits.** `startSpeakingPlan.waitSeconds: 0.8`
 (default is 0.4) and `transcriptionEndpointingPlan.onNumberSeconds: 3.0` (vs. 0.5 for

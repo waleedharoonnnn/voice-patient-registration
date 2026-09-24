@@ -4,7 +4,7 @@
   "firstMessageInterruptionsEnabled": true,
   "model": {
     "provider": "openai",
-    "model": "gpt-4o-mini",
+    "model": "gpt-4.1",
     "temperature": 0.3,
     "messages": [
       {
@@ -15,12 +15,14 @@
     "toolIds": "$TOOL_IDS"
   },
   "transcriber": {
-    "provider": "deepgram",
-    "model": "nova-3",
-    "language": "multi",
-    "smartFormat": true,
-    "numerals": true,
-    "keyterm": [
+    "provider": "assembly-ai",
+    "speechModel": "universal-streaming-english",
+    "language": "en",
+    "languageDetection": false,
+    "formatTurns": true,
+    "confidenceThreshold": 0.4,
+    "disablePartialTranscripts": false,
+    "keytermsPrompt": [
       "date of birth",
       "insurance",
       "emergency contact",
@@ -30,9 +32,9 @@
     ]
   },
   "voice": {
-    "provider": "openai",
-    "voiceId": "alloy",
-    "model": "gpt-4o-mini-tts"
+    "provider": "cartesia",
+    "model": "sonic-3.5",
+    "voiceId": "f91ab3e6-5071-4e15-b016-cde6f2bcd222"
   },
   "backgroundSound": "office",
   "backgroundSpeechDenoisingPlan": {
@@ -46,6 +48,9 @@
       "onPunctuationSeconds": 0.5,
       "onNoPunctuationSeconds": 1.2,
       "onNumberSeconds": 3.0
+    },
+    "smartEndpointingPlan": {
+      "provider": "vapi"
     }
   },
   "stopSpeakingPlan": {

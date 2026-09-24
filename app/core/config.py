@@ -7,7 +7,7 @@ if a required field is missing, so a misconfigured deployment never serves traff
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -55,6 +55,16 @@ class Settings(BaseSettings):
     CORS_ORIGINS: Annotated[list[str], NoDecode] = Field(default_factory=list)
     RATE_LIMIT_DEFAULT: str = "60/minute"
 
+    # Swagger UI / ReDoc / openapi.json. Handy for reviewers; set false to hide the API
+    # surface in production.
+    ENABLE_API_DOCS: bool = True
+    # Only enable when every request reaches the app over HTTPS (e.g. behind a TLS
+    # terminating proxy) — browsers cache HSTS, so enabling it on plain HTTP is harmful.
+    ENABLE_HSTS: bool = False
+    # Largest accepted request body. End-of-call reports carry full transcripts, so this
+    # is generous; anything bigger is rejected with 413 before it reaches a handler.
+    MAX_REQUEST_BODY_BYTES: int = 2_000_000
+
     # Voice tool handlers must never hang a live call; each is wrapped in a timeout.
     VAPI_TOOL_TIMEOUT_SECONDS: float = 8.0
     # DB sessions used to serve the Vapi webhook get a tighter statement_timeout than the
@@ -64,6 +74,13 @@ class Settings(BaseSettings):
     # Only needed to run `scripts/sync_vapi.py`, not to serve traffic.
     PUBLIC_BASE_URL: str | None = None
     VAPI_PHONE_NUMBER_ID: str | None = None
+    # Rollback knobs for the voice stack in vapi/assistant.json, as JSON objects. Transcriber
+    # and voice are *replaced* wholesale (field names differ per provider, e.g. Deepgram
+    # `keyterm` vs AssemblyAI `keytermsPrompt`); model is *merged* so the prompt, tools and
+    # temperature are kept. Unset = use vapi/assistant.json as committed.
+    VAPI_TRANSCRIBER_OVERRIDE: dict[str, Any] | None = None
+    VAPI_MODEL_OVERRIDE: dict[str, Any] | None = None
+    VAPI_VOICE_OVERRIDE: dict[str, Any] | None = None
 
     # Mock appointment availability is computed in this timezone (business hours,
     # spoken-back times). IANA name, resolved via zoneinfo.

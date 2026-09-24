@@ -98,7 +98,23 @@ def build_assistant_payload(tool_ids: list[str]) -> dict[str, Any]:
         "VAPI_WEBHOOK_SECRET": settings.VAPI_WEBHOOK_SECRET.get_secret_value(),
     }
     resolved: dict[str, Any] = _resolve_placeholders(raw, env)
-    return resolved
+    return apply_stack_overrides(resolved)
+
+
+def apply_stack_overrides(payload: dict[str, Any]) -> dict[str, Any]:
+    """Apply the `VAPI_*_OVERRIDE` env rollback knobs (see app/core/config.py).
+
+    Transcriber and voice are replaced wholesale because their fields are provider-specific;
+    the model block is merged so the system prompt, tool IDs and temperature survive.
+    """
+    settings = get_settings()
+    if settings.VAPI_TRANSCRIBER_OVERRIDE:
+        payload["transcriber"] = dict(settings.VAPI_TRANSCRIBER_OVERRIDE)
+    if settings.VAPI_VOICE_OVERRIDE:
+        payload["voice"] = dict(settings.VAPI_VOICE_OVERRIDE)
+    if settings.VAPI_MODEL_OVERRIDE:
+        payload["model"] = {**payload["model"], **settings.VAPI_MODEL_OVERRIDE}
+    return payload
 
 
 def _redact(payload: dict[str, Any]) -> dict[str, Any]:
@@ -135,7 +151,6 @@ def _request(client: httpx.Client, method: str, path: str, **kwargs: Any) -> htt
             )
             time.sleep(backoff)
 
-    assert last_exc is not None
     raise SyncError(f"{method} {path} failed after {_MAX_RETRIES + 1} attempts: {last_exc}")
 
 
@@ -218,20 +233,35 @@ def upsert_assistant(client: httpx.Client, payload: dict[str, Any], dry_run: boo
     return assistant_id
 
 
+# Paths whose values are never printed: secrets, or too long to be useful in a diff line.
+_OPAQUE_DIFF_PATHS = ("server.headers", "model.messages")
+
+
+def diff_paths(live: Any, new: Any, path: str = "") -> list[tuple[str, Any, Any]]:
+    """Leaf-level differences as (dotted.path, live_value, new_value).
+
+    Only keys present in `new` are compared: a PATCH leaves other live fields alone, so
+    they are not changes this sync would make. Opaque paths are compared as a whole.
+    """
+    if isinstance(new, dict) and isinstance(live, dict) and path not in _OPAQUE_DIFF_PATHS:
+        diffs: list[tuple[str, Any, Any]] = []
+        for key, value in new.items():
+            child = f"{path}.{key}" if path else key
+            diffs.extend(diff_paths(live.get(key), value, child))
+        return diffs
+    return [] if live == new else [(path, live, new)]
+
+
 def _print_diff_summary(existing: dict[str, Any], new: dict[str, Any]) -> None:
-    """Shallow, top-level-key diff summary — enough to eyeball what a sync would change."""
-    changed, added = [], []
-    for key, value in new.items():
-        if key not in existing:
-            added.append(key)
-        elif existing[key] != value:
-            changed.append(key)
-    if added:
-        print(f"    would add fields: {', '.join(sorted(added))}")
-    if changed:
-        print(f"    would change fields: {', '.join(sorted(changed))}")
-    if not added and not changed:
+    """Field-level diff of what a sync would change, with secrets and the prompt elided."""
+    diffs = diff_paths(existing, new)
+    if not diffs:
         print("    no changes")
+    for path, live_value, new_value in diffs:
+        if path.startswith(_OPAQUE_DIFF_PATHS):
+            print(f"    ~ {path}: (differs; value not shown)")
+        else:
+            print(f"    ~ {path}: {json.dumps(live_value)} -> {json.dumps(new_value)}")
 
 
 def assign_phone_number(client: httpx.Client, assistant_id: str, dry_run: bool) -> None:

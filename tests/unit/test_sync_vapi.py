@@ -108,3 +108,64 @@ def test_build_assistant_payload_requires_public_base_url(
         sync_vapi.build_assistant_payload(tool_ids=[])
 
     get_settings.cache_clear()
+
+
+def test_assistant_json_uses_the_chosen_voice_stack() -> None:
+    import json
+
+    raw = json.loads(sync_vapi.ASSISTANT_PATH.read_text(encoding="utf-8"))
+
+    assert raw["transcriber"]["provider"] == "assembly-ai"
+    assert raw["transcriber"]["speechModel"] == "universal-streaming-english"
+    assert raw["transcriber"]["keytermsPrompt"]  # AssemblyAI's name for keyterms
+    assert (raw["model"]["provider"], raw["model"]["model"]) == ("openai", "gpt-4.1")
+    assert raw["model"]["temperature"] == 0.3
+    assert (raw["voice"]["provider"], raw["voice"]["model"]) == ("cartesia", "sonic-3.5")
+
+
+def test_stack_overrides_replace_transcriber_and_voice_and_merge_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VAPI_TRANSCRIBER_OVERRIDE", '{"provider": "deepgram", "model": "nova-3"}')
+    monkeypatch.setenv("VAPI_VOICE_OVERRIDE", '{"provider": "openai", "voiceId": "alloy"}')
+    monkeypatch.setenv("VAPI_MODEL_OVERRIDE", '{"model": "gpt-4o-mini"}')
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    payload = {
+        "transcriber": {"provider": "assembly-ai", "keytermsPrompt": ["x"]},
+        "voice": {"provider": "cartesia", "model": "sonic-3.5", "voiceId": "v"},
+        "model": {"provider": "openai", "model": "gpt-4.1", "temperature": 0.3, "toolIds": ["t"]},
+    }
+
+    result = sync_vapi.apply_stack_overrides(payload)
+    get_settings.cache_clear()
+
+    assert result["transcriber"] == {"provider": "deepgram", "model": "nova-3"}
+    assert result["voice"] == {"provider": "openai", "voiceId": "alloy"}
+    assert result["model"] == {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "temperature": 0.3,
+        "toolIds": ["t"],
+    }
+
+
+def test_stack_overrides_unset_leave_payload_untouched() -> None:
+    payload = {"transcriber": {"provider": "a"}, "voice": {"provider": "b"}, "model": {"m": 1}}
+    assert sync_vapi.apply_stack_overrides(dict(payload)) == payload
+
+
+def test_diff_paths_reports_nested_leaf_changes_only_for_keys_we_send() -> None:
+    live = {"voice": {"provider": "openai", "voiceId": "alloy"}, "extra": 1, "name": "A"}
+    new = {"voice": {"provider": "cartesia", "voiceId": "alloy"}, "name": "A"}
+
+    assert sync_vapi.diff_paths(live, new) == [("voice.provider", "openai", "cartesia")]
+
+
+def test_diff_paths_treats_secret_headers_as_opaque() -> None:
+    live = {"server": {"headers": {"X-Vapi-Secret": "old"}}}
+    new = {"server": {"headers": {"X-Vapi-Secret": "new"}}}
+
+    [(path, _, _)] = sync_vapi.diff_paths(live, new)
+    assert path == "server.headers"

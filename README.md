@@ -317,7 +317,7 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy app
 uv run pytest --cov=app
 ```
 
-- **294 tests.** Unit tests cover validators, config and pure logic. Integration tests run
+- **308 tests.** Unit tests cover validators, config and pure logic. Integration tests run
   against real Postgres with migrations applied and cover every endpoint (happy path,
   validation, not-found, auth), the voice tools with recorded-shape Vapi payloads,
   security and resilience.

@@ -58,10 +58,10 @@ Automated conversation evals don't exist (Vapi's Chat API needs a paid plan; see
 
 | Requirement | Implementation | Verification | Status |
 |---|---|---|---|
-| Deployed and callable at review time | Dockerfile, [deployment.md](deployment.md); the number is live, but the webhook runs through a local ngrok tunnel | Image built and run against Neon dev (`/health/ready` 200) | 🟡 needs a host (user action) |
+| Deployed and callable at review time | Vercel (`iad1`), [ADR 0010](adr/0010-vercel-serverless-deployment.md), [deployment.md](deployment.md); Vapi webhook points at the Vercel URL | Live `/health/ready` 200, `/patients` 401 without a key, webhook secret accepted (200) | ✅ |
 | Code quality | Layered architecture, ruff, mypy `--strict` | CI, `make check` | ✅ |
 | README (setup, architecture, stack, env vars, limitations) | `README.md` | Commands run in Batch 8 | ✅ |
-| Security: no hardcoded keys, env vars, input sanitization | `app/core/config.py`, validation, [security-review.md](security-review.md) | gitleaks (history), `test_security.py`, `test_route_auth.py` | ✅ |
+| Security: no hardcoded keys, env vars, input sanitization | `app/core/config.py`, validation, README "Security and privacy" | gitleaks (history), `test_security.py`, `test_route_auth.py` | ✅ |
 | Log the final collected payload | `patient created` / `patient updated` events (PII masked unless `LOG_PII=true`) and a per-tool-call log | `test_logs_mask_pii_and_never_contain_secrets` | ✅ |
 
 ## Evaluation: edge cases and resilience
@@ -82,27 +82,26 @@ Automated conversation evals don't exist (Vapi's Chat API needs a paid plan; see
 | Multi-language (Spanish) | Prompt "Language" section still there, but the English-only transcriber chosen in Batch 8 can't hear Spanish | Rollback via `VAPI_TRANSCRIBER_OVERRIDE` | 🟡 disabled by stack choice |
 | Transcript/summary linked to patient | `call_logs`, [ADR 0007](adr/0007-call-logs-and-transcripts.md) | `test_call_logs.py`, `test_very_long_transcript_is_stored_intact` | ✅ |
 | Dashboard | `/dashboard` (HTTP Basic), [ADR 0009](adr/0009-server-rendered-dashboard.md) | `test_dashboard.py` | ✅ |
-| Automated API tests | `tests/` (unit + integration on real Postgres) | 293 tests, 90% coverage on `app/` | ✅ |
+| Automated API tests | `tests/` (unit + integration on real Postgres) | 308 tests, 90% coverage on `app/` | ✅ |
 
 ## Submission deliverables
 
 | Item | Status |
 |---|---|
-| Repository URL, US phone number | ✅ in [submission.md](submission.md) |
-| API base URL, dashboard URL | 🟡 placeholders until deployed |
+| Repository URL, US phone number | ✅ in README Quick links |
+| API base URL, dashboard URL | ✅ in README Quick links |
 | Credentials / testing notes | ✅ notes; credentials sent outside the repo |
 | "Next steps" in README | ✅ |
 
 ## Totals and open items
 
-**43 requirements: 40 ✅ Done · 3 🟡 Partial · 0 ❌ Missing.** Fixed in Batch 8: 400 on
-malformed JSON, the README rewrite, plus the security fixes in security-review.md.
+**43 requirements: 42 ✅ Done · 1 🟡 Partial · 0 ❌ Missing.** Fixed in Batch 8: 400 on
+malformed JSON, rate limiting, body/field limits, the webhook's DB-down fallback, the
+README rewrite and the Vercel deployment.
 
-Partial, and not fixable in code:
-1. **Deployment.** The image is ready; hosting is a user decision (deployment.md, checklist).
-2. **Spanish.** Turned off by the chosen English transcriber. Re-enable with
+Partial:
+1. **Spanish.** Turned off by the chosen English transcriber. Re-enable with
    `universal-streaming-multilingual` or Deepgram `multi` (ADR 0006).
-3. **Live URLs in the submission.** They depend on (1).
 
 Other open items:
 - **No automated conversation eval** (`make eval`). Vapi's Chat API returned 402 (card

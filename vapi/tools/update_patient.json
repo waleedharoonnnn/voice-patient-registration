@@ -1,16 +1,20 @@
 {
   "name": "update_patient",
-  "description": "Update fields on an existing patient record, after find_patient_by_phone has identified them. Requires the caller to restate their date of birth to verify identity before any change is applied.",
+  "messages": [
+    {"type": "request-start", "content": "Okay, let me update that.", "blocking": false},
+    {"type": "request-response-delayed", "timingMilliseconds": 2500, "content": "Thanks for your patience, I'm still working on that."}
+  ],
+  "description": "Update fields on an existing patient record: a returning caller (after find_patient_by_phone or verify_caller), or a correction to a record already saved earlier in this same call. For a record saved in this call, date_of_birth may be omitted; otherwise the caller must restate their date of birth to verify identity before any change is applied. Never use create_patient for a correction.",
   "parameters": {
     "type": "object",
     "properties": {
       "patient_id": {
         "type": "string",
-        "description": "The patient_id returned by find_patient_by_phone."
+        "description": "The patient_id from SAVED/ALREADY_SAVED earlier in this call, or from MATCH/VERIFIED."
       },
       "date_of_birth": {
         "type": "string",
-        "description": "Date of birth as MM/DD/YYYY, restated by the caller to verify identity."
+        "description": "Date of birth as MM/DD/YYYY, restated by the caller to verify identity. For a record saved earlier in this call, pass the date of birth that was saved (or omit it)."
       },
       "fields": {
         "type": "object",
@@ -38,6 +42,6 @@
         }
       }
     },
-    "required": ["patient_id", "date_of_birth", "fields"]
+    "required": ["patient_id", "fields"]
   }
 }

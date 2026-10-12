@@ -43,20 +43,34 @@
     }
   },
   "startSpeakingPlan": {
-    "waitSeconds": 0.8,
+    "waitSeconds": 0.6,
     "transcriptionEndpointingPlan": {
       "onPunctuationSeconds": 0.5,
       "onNoPunctuationSeconds": 1.2,
       "onNumberSeconds": 3.0
     },
     "smartEndpointingPlan": {
-      "provider": "vapi"
-    }
+      "provider": "livekit",
+      "waitFunction": "20 + 500 * sqrt(x) + 2500 * x^3"
+    },
+    "customEndpointingRules": [
+      {
+        "type": "assistant",
+        "regex": "(phone|number|date of birth|birthday|zip|spell|member id|email)",
+        "regexOptions": [{ "type": "ignore-case", "enabled": true }],
+        "timeoutSeconds": 1.5
+      },
+      {
+        "type": "customer",
+        "regex": "(\\d|\\b[A-Za-z])[\\s,.-]*$",
+        "timeoutSeconds": 1.5
+      }
+    ]
   },
   "stopSpeakingPlan": {
-    "numWords": 2,
-    "voiceSeconds": 0.3,
-    "backoffSeconds": 1.0
+    "numWords": 3,
+    "voiceSeconds": 0.4,
+    "backoffSeconds": 0.8
   },
   "maxDurationSeconds": 900,
   "silenceTimeoutSeconds": 3600,

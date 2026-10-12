@@ -1,5 +1,9 @@
 {
   "name": "create_patient",
+  "messages": [
+    {"type": "request-start", "content": "Perfect, let me save that for you.", "blocking": false},
+    {"type": "request-response-delayed", "timingMilliseconds": 2500, "content": "Thanks for your patience, I'm still working on that."}
+  ],
   "description": "Save a new patient record after the caller has confirmed all collected information is correct. Only call this after read-back and explicit confirmation. Required fields must all be present; optional fields may be omitted if the caller declined to provide them.",
   "parameters": {
     "type": "object",

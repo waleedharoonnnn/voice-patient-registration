@@ -121,7 +121,10 @@ async def test_forwarded_for_list_uses_first_hop(custom_client: AppFactory) -> N
 
 async def test_ip_header_ignored_unless_configured(custom_client: AppFactory) -> None:
     """Off Vercel, a client must not be able to dodge the limit by inventing headers."""
-    async with custom_client(RATE_LIMIT_DEFAULT="1/minute") as client:
+    # Pinned empty: a local .env may set the header for Vercel-like testing.
+    async with custom_client(
+        RATE_LIMIT_DEFAULT="1/minute", RATE_LIMIT_CLIENT_IP_HEADER=""
+    ) as client:
         one = {**API_KEY, "x-real-ip": "198.51.100.1"}
         two = {**API_KEY, "x-real-ip": "198.51.100.2"}
         assert (await client.get("/providers", headers=one)).status_code == 200

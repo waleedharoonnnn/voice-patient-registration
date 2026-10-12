@@ -158,11 +158,19 @@ def _request(client: httpx.Client, method: str, path: str, **kwargs: Any) -> htt
 
 
 def _load_function_tool_specs() -> list[dict[str, Any]]:
-    """Wrap each vapi/tools/*.json (raw OpenAI function schema) as a Vapi FunctionTool."""
+    """Wrap each vapi/tools/*.json (raw OpenAI function schema) as a Vapi FunctionTool.
+
+    An optional top-level `messages` key in the file (filler lines Vapi speaks while the
+    tool runs) belongs to the Vapi tool, not the function schema, so it is moved up.
+    """
     specs = []
     for path in sorted(TOOLS_DIR.glob("*.json")):
         function_schema = json.loads(path.read_text(encoding="utf-8"))
-        specs.append({"type": "function", "function": function_schema})
+        messages = function_schema.pop("messages", None)
+        spec: dict[str, Any] = {"type": "function", "function": function_schema}
+        if messages:
+            spec["messages"] = messages
+        specs.append(spec)
     return specs
 
 

@@ -78,26 +78,28 @@ async def test_identify_non_us_number_is_no_caller_id(client: AsyncClient) -> No
 
 
 async def test_identify_unknown_number_is_no_match(client: AsyncClient) -> None:
-    assert await _result(client, _tool_call("identify_caller")) == "NO_MATCH"
+    result = await _result(client, _tool_call("identify_caller"))
+    assert result == "NO_MATCH: caller_phone=2125550142"
 
 
 async def test_identify_known_number_reveals_nothing(client: AsyncClient) -> None:
     await _create(client)
     result = await _result(client, _tool_call("identify_caller"))
-    assert result == "CALLER_ON_FILE"
+    assert result == "CALLER_ON_FILE: caller_phone=2125550142"
     assert "Rosa" not in result
 
 
 async def test_identify_reads_caller_from_call_object_fallback(client: AsyncClient) -> None:
     await _create(client)
     body = _tool_call("identify_caller", on_call_object=True)
-    assert await _result(client, body) == "CALLER_ON_FILE"
+    assert await _result(client, body) == "CALLER_ON_FILE: caller_phone=2125550142"
 
 
 async def test_identify_ignores_soft_deleted_patients(client: AsyncClient) -> None:
     patient_id = await _create(client)
     await client.delete(f"/patients/{patient_id}", headers=API_KEY)
-    assert await _result(client, _tool_call("identify_caller")) == "NO_MATCH"
+    result = await _result(client, _tool_call("identify_caller"))
+    assert result == "NO_MATCH: caller_phone=2125550142"
 
 
 # --- verify_caller -------------------------------------------------------------------------
@@ -141,7 +143,7 @@ async def test_verify_lists_upcoming_appointment(client: AsyncClient) -> None:
     assert result.startswith(f"VERIFIED: patient_id={patient_id}; first_name=Rosa;")
     upcoming = result.split("upcoming_appointments=")[1]
     assert upcoming != "none"
-    assert "Eastern with Dr." in upcoming
+    assert "Eastern with Doctor " in upcoming
     # The same spoken time the booking confirmed.
     assert booked.split("time=")[1].removesuffix(" Eastern") in upcoming
 

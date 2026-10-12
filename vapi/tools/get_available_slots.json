@@ -1,6 +1,10 @@
 {
   "name": "get_available_slots",
-  "description": "Find open appointment times. Only call this after the patient has been saved (SAVED/ALREADY_SAVED/UPDATED) and has said they'd like to book a first appointment. Returns up to 3 options; offer the caller at most 2 at a time. Times are Eastern.",
+  "messages": [
+    {"type": "request-start", "content": "Let me check the schedule.", "blocking": false},
+    {"type": "request-response-delayed", "timingMilliseconds": 2500, "content": "Thanks for your patience, I'm still working on that."}
+  ],
+  "description": "Find open appointment times. Only call this once you have a patient_id (SAVED/ALREADY_SAVED/UPDATED/VERIFIED) and the caller wants to book or reschedule an appointment. Returns up to 3 options; offer the caller at most 2 at a time. Times are Eastern.",
   "parameters": {
     "type": "object",
     "properties": {

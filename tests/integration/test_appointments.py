@@ -136,7 +136,7 @@ async def test_weekend_preferred_date_returns_no_slots(client: AsyncClient) -> N
 async def test_slots_result_is_speakable(client: AsyncClient) -> None:
     result = await _result(client, _tool_call("call-appt-3", "get_available_slots", {}))
     assert result.startswith("SLOTS: 1) ")
-    assert " Eastern with Dr. " in result
+    assert " Eastern with Doctor " in result
     assert result.count(") ") <= 3
 
 

@@ -23,8 +23,20 @@ class AppointmentRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get_by_source_call_id(self, source_call_id: str) -> Appointment | None:
-        stmt = select(Appointment).where(Appointment.source_call_id == source_call_id)
+    async def get_by_id(self, appointment_id: uuid.UUID) -> Appointment | None:
+        return await self._session.get(Appointment, appointment_id)
+
+    async def get_booked_by_source_call_id(self, source_call_id: str) -> Appointment | None:
+        """The call's still-booked appointment. Cancelled ones are ignored, so a caller who
+        cancels and rebooks in the same call gets a new booking, not the cancelled row."""
+        stmt = (
+            select(Appointment)
+            .where(
+                Appointment.source_call_id == source_call_id,
+                Appointment.status == "booked",
+            )
+            .limit(1)
+        )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -76,11 +88,26 @@ class AppointmentRepository:
         return (await self._session.execute(stmt)).scalar_one()
 
     async def create(self, fields: dict[str, object]) -> Appointment:
-        appointment = Appointment(**fields)
+        appointment = Appointment()
+        await self._write_in_savepoint(appointment, fields)
+        return appointment
+
+    async def update(self, appointment: Appointment, fields: dict[str, object]) -> Appointment:
+        """Apply `fields` in place; a move onto a booked slot raises ConflictError."""
+        await self._write_in_savepoint(appointment, fields)
+        return appointment
+
+    async def _write_in_savepoint(
+        self, appointment: Appointment, fields: dict[str, object]
+    ) -> None:
         try:
-            # Savepoint: a constraint failure rolls back only this insert, leaving the
+            # Savepoint: a constraint failure rolls back only this write, leaving the
             # request's transaction usable (the caller still gets a clean result).
+            # Fields are set inside it on purpose: begin_nested() flushes pending changes
+            # first, so a change made before it would fail outside the savepoint.
             async with self._session.begin_nested():
+                for key, value in fields.items():
+                    setattr(appointment, key, value)
                 self._session.add(appointment)
                 await self._session.flush()
         except IntegrityError as exc:
@@ -89,4 +116,3 @@ class AppointmentRepository:
                 raise ConflictError("That slot was just booked by someone else.") from exc
             raise
         await self._session.refresh(appointment)
-        return appointment

@@ -1,5 +1,8 @@
 {
   "name": "find_patient_by_phone",
+  "messages": [
+    {"type": "request-response-delayed", "timingMilliseconds": 2500, "content": "One moment."}
+  ],
   "description": "Look up existing patients by phone number, e.g. right after collecting the phone number, to check for a duplicate registration before creating a new record.",
   "parameters": {
     "type": "object",

@@ -1,6 +1,6 @@
 {
   "name": "identify_caller",
-  "description": "Check whether the caller's phone number (caller ID) is already on file. Call this once, at the very start of the call, before asking for anything. Returns no personal details.",
+  "description": "Check whether the caller's phone number (caller ID) is already on file. Call this once, at the very start of the call, before asking for anything. Returns no stored personal details; returns the caller's own number as caller_phone when there is one.",
   "parameters": {
     "type": "object",
     "properties": {}

@@ -13,7 +13,7 @@ from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app.core.config import get_settings
-from app.core.errors import ValidationFailedError
+from app.core.errors import NotFoundError, ValidationFailedError
 from app.models.appointment import Appointment
 from app.models.provider import Provider
 from app.repositories.appointment_repository import AppointmentRepository
@@ -117,16 +117,11 @@ class AppointmentService:
         """Raises ValueError (bad/expired slot), ConflictError (SLOT_TAKEN via the DB's
         unique index), or ValidationFailedError (unknown/inactive provider)."""
         if source_call_id is not None:
-            existing = await self._appointments.get_by_source_call_id(source_call_id)
+            existing = await self._appointments.get_booked_by_source_call_id(source_call_id)
             if existing is not None:
                 return existing
 
-        provider_id, start_time = decode_slot_id(slot_id)
-
-        provider = await self._providers.get_by_id(provider_id)
-        if provider is None or not provider.active:
-            raise ValidationFailedError("That provider is no longer available.")
-
+        provider_id, start_time = await self._resolve_slot(slot_id)
         fields: dict[str, object] = {
             "patient_id": patient_id,
             "provider_id": provider_id,
@@ -135,6 +130,63 @@ class AppointmentService:
             "source_call_id": source_call_id,
         }
         return await self._appointments.create(fields)
+
+    async def cancel_appointment(
+        self, *, appointment_id: uuid.UUID, patient_ids: list[uuid.UUID]
+    ) -> tuple[Appointment, str]:
+        """Cancel one of the verified caller's own upcoming appointments.
+
+        `patient_ids` are the patients whose identity the caller has proven; anything else
+        is NotFoundError, so a caller can't tell another patient's appointment exists.
+        Cancelling an already-cancelled appointment returns it unchanged (a retried tool
+        call is a no-op). Returns the appointment and its provider's name.
+        """
+        appointment = await self._owned_upcoming(appointment_id, patient_ids)
+        if appointment.status != "cancelled":
+            appointment = await self._appointments.update(appointment, {"status": "cancelled"})
+        return appointment, await self._provider_name(appointment.provider_id)
+
+    async def reschedule_appointment(
+        self, *, appointment_id: uuid.UUID, patient_ids: list[uuid.UUID], slot_id: str
+    ) -> tuple[Appointment, str]:
+        """Move one of the verified caller's own booked appointments to a new slot, in place.
+
+        Raises NotFoundError (not theirs, cancelled, or past), ValueError (bad slot),
+        ValidationFailedError (inactive provider), or ConflictError (slot taken — the same
+        unique index that guards booking). Retrying with the same slot is a no-op.
+        """
+        appointment = await self._owned_upcoming(appointment_id, patient_ids)
+        if appointment.status != "booked":
+            raise NotFoundError("Appointment not found.")
+        provider_id, start_time = await self._resolve_slot(slot_id)
+        appointment = await self._appointments.update(
+            appointment, {"provider_id": provider_id, "start_time": start_time}
+        )
+        return appointment, await self._provider_name(provider_id)
+
+    async def _owned_upcoming(
+        self, appointment_id: uuid.UUID, patient_ids: list[uuid.UUID]
+    ) -> Appointment:
+        appointment = await self._appointments.get_by_id(appointment_id)
+        if (
+            appointment is None
+            or appointment.patient_id not in patient_ids
+            or appointment.start_time < datetime.now(UTC)
+        ):
+            raise NotFoundError("Appointment not found.")
+        return appointment
+
+    async def _resolve_slot(self, slot_id: str) -> tuple[uuid.UUID, datetime]:
+        """Decode a signed slot and check its provider is still active."""
+        provider_id, start_time = decode_slot_id(slot_id)
+        provider = await self._providers.get_by_id(provider_id)
+        if provider is None or not provider.active:
+            raise ValidationFailedError("That provider is no longer available.")
+        return provider_id, start_time
+
+    async def _provider_name(self, provider_id: uuid.UUID) -> str:
+        provider = await self._providers.get_by_id(provider_id)
+        return provider.full_name if provider else "your provider"
 
     async def list_for_patient(self, patient_id: uuid.UUID) -> list[Appointment]:
         return await self._appointments.list_for_patient(patient_id)

@@ -1,5 +1,8 @@
 {
   "name": "validate_fields",
+  "messages": [
+    {"type": "request-response-delayed", "timingMilliseconds": 2500, "content": "One moment."}
+  ],
   "description": "Validate one or more patient fields the caller just gave, without saving anything. Use this mid-conversation to catch problems (e.g. a malformed phone number or an impossible date of birth) so you can re-prompt for exactly that field.",
   "parameters": {
     "type": "object",

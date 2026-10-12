@@ -113,10 +113,24 @@ class PatientService:
         Several patients can share a phone (family line), so the DOB both proves identity
         and picks which record is theirs.
         """
-        for patient in await self._repository.find_active_by_phone(phone_number):
-            if patient.date_of_birth == date_of_birth:
-                return patient
-        return None
+        matches = await self.find_all_verified_by_phone(phone_number, date_of_birth)
+        return matches[0] if matches else None
+
+    async def find_all_verified_by_phone(
+        self, phone_number: str, date_of_birth: date
+    ) -> list[Patient]:
+        """Every active patient on this phone with this DOB (twins on a family line)."""
+        return [
+            patient
+            for patient in await self._repository.find_active_by_phone(phone_number)
+            if patient.date_of_birth == date_of_birth
+        ]
+
+    async def was_created_by_call(self, patient_id: uuid.UUID, call_id: str) -> bool:
+        """Was this (active) patient saved during `call_id`? The caller in that call just
+        confirmed every field, so a correction there needs no second DOB check."""
+        patient = await self._repository.get_by_id(patient_id)
+        return patient is not None and patient.source_call_id == call_id
 
     async def verify_identity(self, patient_id: uuid.UUID, date_of_birth: date) -> bool:
         """Used before voice-initiated updates: does the caller know the DOB on file?"""

@@ -1,5 +1,9 @@
 {
   "name": "book_appointment",
+  "messages": [
+    {"type": "request-start", "content": "Great, let me book that.", "blocking": false},
+    {"type": "request-response-delayed", "timingMilliseconds": 2500, "content": "Thanks for your patience, I'm still working on that."}
+  ],
   "description": "Book one of the slots returned by get_available_slots, after the caller has picked it. Pass the slot_id exactly as it was returned — never invent or modify one.",
   "parameters": {
     "type": "object",
